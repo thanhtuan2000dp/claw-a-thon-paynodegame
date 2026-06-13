@@ -22,7 +22,7 @@ from storage.snapshots import SnapshotStore
 PREFERENCE: dict[str, list[str]] = {
     "reviews": ["sensortower", "googleplay"],
     "downloads": ["sensortower"],
-    "ranking": ["sensortower"],
+    "ranking": ["sensortower", "ios_charts"],
     "metadata": ["itunes", "googleplay", "sensortower"],
     "search": ["itunes", "googleplay", "sensortower"],
 }

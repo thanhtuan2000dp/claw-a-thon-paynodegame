@@ -82,7 +82,8 @@ Connectors **degrade gracefully and must never crash the agent**. A capability i
 
 ### Data-source reality (2026)
 
-- **iTunes** (free) — iOS metadata/ratings/version only; the reviews RSS feed is dead, so **iOS runs are metrics-only** (rating + version + snapshot trend, no review text).
+- **iTunes** (free) — iOS metadata/ratings/version only; the reviews RSS feed is dead, so **iOS review text is unavailable for free** (rating + version + snapshot trend only).
+- **iOS charts** (`ios_charts`, free) — iOS `ranking` only, via Apple's Marketing-Tools top-charts RSS (`top-free` / `top-paid`; **no top-grossing**, max 100 entries). Reports an app's chart position or `rank=None` if it's outside the top 100. Sensor Tower is still preferred for ranking (exact, any depth, historical); this is the free fallback.
 - **Google Play** (free, `google-play-scraper`) — Android metadata **and** reviews with dates; version is fuzzy.
 - **Sensor Tower** (`SENSORTOWER_AUTH_TOKEN`, optional) — reviews-with-dates, downloads/revenue, rankings, **subject to the token's API scope**. It already advertises `reviews` for iOS, so the day the token gains reviews scope, iOS review analysis lights up with no code change.
 
