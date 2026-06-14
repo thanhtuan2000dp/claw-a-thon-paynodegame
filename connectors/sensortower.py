@@ -1,8 +1,11 @@
 """Sensor Tower connector (formerly data.ai / App Annie) — PREMIUM, keyed.
 
-Activates only when ``SENSORTOWER_AUTH_TOKEN`` is set. Provides the data the free
-sources cannot: reviews with dates+ratings, download/revenue estimates, and
-category rankings — across iOS, Android, and unified.
+Activates only when ``SENSORTOWER_AUTH_TOKEN`` is set. Scoped to **iOS** on
+purpose: Android is fully covered by the free Google Play connector (metadata +
+reviews), so Sensor Tower's role here is the iOS gap — App Store reviews,
+download/revenue estimates, and rankings — which has no free source. (The API
+itself also serves Android/unified; widen ``stores`` below if you ever want it
+to back Android too.)
 
 Base URL: https://api.sensortower.com  ·  Auth: ``auth_token`` query param.
 
@@ -53,7 +56,9 @@ def _parse_dt(value) -> Optional[datetime]:
 
 class SensorTowerConnector(AppDataConnector):
     name = "sensortower"
-    stores = {"ios", "android", "unified"}
+    # iOS-only by design — Android uses the free Google Play connector. Add
+    # "android"/"unified" here to let Sensor Tower back those stores too.
+    stores = {"ios"}
 
     def __init__(self, auth_token: Optional[str] = None, timeout: float = 20.0):
         self.auth_token = auth_token or os.environ.get("SENSORTOWER_AUTH_TOKEN", "")

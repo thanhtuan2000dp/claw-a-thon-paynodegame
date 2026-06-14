@@ -26,8 +26,14 @@ class LLM:
             base_url=base_url,
             api_key=api_key,
             temperature=temperature,
-            timeout=50,       # fail fast on a slow MaaS call; callers degrade gracefully
-            max_retries=0,
+            # Fail fast on a slow MaaS so callers degrade quickly (good UX whether MaaS
+            # is fast or slow): when it's healthy it answers in seconds; when it's slow
+            # no timeout helps, so don't make the user wait. Raise LLM_TIMEOUT if you
+            # specifically want to wait out a borderline-slow model for richer output.
+            timeout=float(os.environ.get("LLM_TIMEOUT", "60")),
+            # 0 retries: a timeout means the model is slow now — retrying just doubles
+            # the wait before the caller degrades. Bump via env only if MaaS is flaky.
+            max_retries=int(os.environ.get("LLM_MAX_RETRIES", "0")),
         )
 
     def complete(self, prompt: str, system: Optional[str] = None) -> str:

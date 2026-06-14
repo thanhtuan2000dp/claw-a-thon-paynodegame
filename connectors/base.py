@@ -59,6 +59,12 @@ class AppMetadata:
     first_release_date: Optional[datetime] = None
     release_notes: Optional[str] = None
     publisher: Optional[str] = None
+    # Store-listing fields (sheet UC1 — populated best-effort from the raw payload).
+    category: Optional[str] = None
+    price: Optional[str] = None
+    icon_url: Optional[str] = None
+    screenshot_urls: list[str] = field(default_factory=list)
+    description: Optional[str] = None
     raw: dict = field(default_factory=dict)
 
 

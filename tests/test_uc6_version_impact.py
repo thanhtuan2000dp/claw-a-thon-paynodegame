@@ -1,14 +1,14 @@
-"""UC1 tests.
+"""Sheet UC6 (version impact / post-release health) tests.
 
   • test_signals_synthetic  — deterministic analytics check with a fake connector
                               (no network, no LLM). Asserts before/after split,
                               rating delta, negative-share, and verdict.
-  • live_itunes             — runs UC1 against the real iTunes API for a chosen
-                              app and prints the report (manual smoke test).
+  • live_itunes             — runs the use case against the real iTunes API for a
+                              chosen app and prints the report (manual smoke test).
 
 Run:
-  ./venv/bin/python tests/test_uc1.py            # synthetic asserts + live iTunes
-  ./venv/bin/python tests/test_uc1.py --no-live  # synthetic asserts only
+  ./venv/bin/python tests/test_uc6_version_impact.py            # synthetic + live iTunes
+  ./venv/bin/python tests/test_uc6_version_impact.py --no-live  # synthetic asserts only
 """
 
 import os
@@ -29,7 +29,7 @@ from connectors.base import (  # noqa: E402
 from core.deps import Deps  # noqa: E402
 from outputs.markdown import MarkdownOutput  # noqa: E402
 from storage.snapshots import Snapshot, SnapshotStore  # noqa: E402
-from usecases.uc1_release_health import ReleaseHealthUseCase  # noqa: E402
+from usecases.uc6_version_impact import VersionImpactUseCase  # noqa: E402
 
 RELEASE = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
@@ -90,7 +90,7 @@ def _build_deps():
 
 
 def test_signals_synthetic():
-    uc = ReleaseHealthUseCase()
+    uc = VersionImpactUseCase()
     result = uc.run({"app": "FakeApp", "store": "ios", "window_days": 14}, _build_deps())
 
     sig = result["signals"]
@@ -150,7 +150,7 @@ def test_metric_trend_synthetic():
         storage=storage,
         config={"default_store": "ios", "default_country": "us"},
     )
-    res = ReleaseHealthUseCase().run({"app": "MetaApp", "store": "ios"}, deps)
+    res = VersionImpactUseCase().run({"app": "MetaApp", "store": "ios"}, deps)
     sig = res["signals"]
     assert sig["review_source"] is None, sig
     assert sig["metric_rating_delta"] == -0.2, sig
@@ -172,7 +172,7 @@ def live_itunes(app_name: str = "Instagram"):
         storage=storage,
         config={"default_store": "ios", "default_country": "us"},
     )
-    uc = ReleaseHealthUseCase()
+    uc = VersionImpactUseCase()
     result = uc.run({"app": app_name, "store": "ios"}, deps)
     print("\n=== LIVE iTunes:", app_name, "===")
     print("app:", result.get("app"))
@@ -197,7 +197,7 @@ def live_googleplay(package: str = "com.instagram.android"):
         storage=SnapshotStore(base_dir="/tmp/uc1_gp_snapshots"),
         config={"default_store": "android", "default_country": "us"},
     )
-    result = ReleaseHealthUseCase().run(
+    result = VersionImpactUseCase().run(
         {"app": package, "store": "android", "window_days": 14}, deps
     )
     sig = result["signals"]

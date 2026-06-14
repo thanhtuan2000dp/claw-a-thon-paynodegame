@@ -1,9 +1,13 @@
-"""iTunes / App Store connector — FREE, no auth.
+"""iTunes / App Store connector — FREE, no auth. iOS only.
 
 Verified 2026-06-13: Search + Lookup return rich metadata (avg rating, rating
-count, current version + release date, release notes). The customer-reviews RSS
-feed is dead (returns 0 entries for every app), so this connector does NOT
-advertise the ``reviews`` capability. iOS only.
+count, current version + release date, release notes). This connector serves
+**search + metadata only**.
+
+iOS *review text* is provided by a separate connector (``appstore_reviews``).
+NB: the customer-reviews RSS feed is NOT dead — a single call often returns an
+empty body (which earlier read as "dead"), but with empty-page retries it works
+and is correctly sorted newest→oldest. See ``appstore_reviews.py``.
 """
 
 from __future__ import annotations
@@ -91,5 +95,11 @@ class ItunesConnector(AppDataConnector):
             first_release_date=_parse_dt(a.get("releaseDate")),
             release_notes=a.get("releaseNotes"),
             publisher=a.get("sellerName"),
+            category=a.get("primaryGenreName"),
+            price=a.get("formattedPrice")
+            or (str(a.get("price")) if a.get("price") is not None else None),
+            icon_url=a.get("artworkUrl512") or a.get("artworkUrl100") or a.get("artworkUrl60"),
+            screenshot_urls=a.get("screenshotUrls") or [],
+            description=a.get("description"),
             raw=a,
         )

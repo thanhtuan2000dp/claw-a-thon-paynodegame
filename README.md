@@ -84,7 +84,7 @@ All data is **public/anonymised** per the competition rulebook. No customer PII.
 main.py            # AgentBase entrypoint: port 8080, GET /health, POST /invocations
 core/              # llm · registry (auto-discovery) · deps (connector selection) · router
 connectors/        # itunes · googleplay · sensortower   (implement AppDataConnector)
-usecases/          # uc1_release_health   (implement UseCase)  ← add uc2.., hypothesis here
+usecases/          # uc1_store_metadata · uc2_reviews_sentiment · uc6_version_impact · hypothesis_check
 outputs/           # markdown  (+ webhook later)
 storage/           # daily metric snapshots
 ```
@@ -107,7 +107,7 @@ python main.py                                     # serves on http://0.0.0.0:80
 Invoke (explicit action):
 ```bash
 curl -X POST http://127.0.0.1:8080/invocations -H "Content-Type: application/json" -d '{
-  "action": "uc1_release_health",
+  "action": "uc6_version_impact",
   "params": {"app": "Spotify", "store": "ios", "country": "us"}
 }'
 ```
@@ -126,8 +126,10 @@ curl http://127.0.0.1:8080/health
 ## Tests
 
 ```bash
-./venv/bin/python tests/test_uc1.py            # synthetic asserts + live iTunes + live Google Play
-./venv/bin/python tests/test_uc1.py --no-live  # offline analytics asserts only
+./venv/bin/python tests/test_uc6_version_impact.py            # synthetic + live iTunes + Google Play
+./venv/bin/python tests/test_uc6_version_impact.py --no-live  # offline analytics asserts only
+./venv/bin/python tests/verify_uc1_store_metadata.py          # sheet UC1 metadata (live)
+./venv/bin/python tests/verify_uc2_reviews_sentiment.py      # sheet UC2 reviews & sentiment (live)
 ```
 
 ## Deploy

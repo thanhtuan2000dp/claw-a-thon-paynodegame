@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**App Intelligence Agent** — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals into product decisions. Given any app, it reports the health of its latest release (UC1, shipping) and checks an executive's hypothesis against the data (Hypothesis Checker, in progress).
+**App Intelligence Agent** — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals into product decisions. It ships several use cases from the "AI Agent UseCases" sheet — store-metadata crawl (sheet UC1 = `uc1_store_metadata`), reviews & sentiment (sheet UC2 = `uc2_reviews_sentiment`), and a post-release health check (sheet UC6 = `uc6_version_impact`) — plus a standalone Hypothesis Checker that stress-tests an executive's claim against the data (not part of the sheet).
 
 It is a Starlette-based HTTP service wrapped by `greennode-agentbase`: `GET /health`, `GET /` (chat UI), `POST /invocations`.
 
@@ -20,8 +20,10 @@ cp .env.example .env          # fill LLM_* (required) and optional SENSORTOWER_A
 python main.py
 
 # Tests (run with the venv interpreter; they self-insert the repo root on sys.path)
-./venv/bin/python tests/test_uc1.py             # synthetic asserts + live iTunes + live Google Play
-./venv/bin/python tests/test_uc1.py --no-live   # offline analytics asserts only (no network/LLM)
+./venv/bin/python tests/test_uc6_version_impact.py            # synthetic asserts + live iTunes + Google Play
+./venv/bin/python tests/test_uc6_version_impact.py --no-live  # offline analytics asserts only (no network/LLM)
+./venv/bin/python tests/verify_uc1_store_metadata.py          # sheet UC1 metadata (live)
+./venv/bin/python tests/verify_uc2_reviews_sentiment.py      # sheet UC2 reviews & sentiment (live)
 ./venv/bin/python tests/test_hypothesis.py      # Hypothesis Checker multi-turn run
 ./venv/bin/python tests/verify_sensortower.py   # probe Sensor Tower endpoints with your token (never prints the token)
 ```
@@ -33,7 +35,7 @@ There is no test runner config, linter, or build step — tests are plain `pytho
 ```bash
 # Explicit action
 curl -X POST http://127.0.0.1:8080/invocations -H "Content-Type: application/json" \
-  -d '{"action": "uc1_release_health", "params": {"app": "Spotify", "store": "ios", "country": "us"}}'
+  -d '{"action": "uc6_version_impact", "params": {"app": "Spotify", "store": "ios", "country": "us"}}'
 
 # Natural language (LLM router picks the action + extracts params)
 curl -X POST http://127.0.0.1:8080/invocations -H "Content-Type: application/json" \
@@ -50,7 +52,7 @@ Request flow:
 POST /invocations → main.handler → core.router.Router.handle → UseCase.run(params, deps, context)
 ```
 
-- **`core/router.py`** — dispatches `{"action", "params"}` directly, or routes `{"message": ...}` through the LLM to pick an action and extract params (explicit params always win over LLM-extracted ones). Detects response language from the user's text.
+- **`core/router.py`** — dispatches `{"action", "params"}` directly, or routes `{"message": ...}`. NL routing tries a fast **heuristic** first (`_heuristic_route`, no LLM): causal-claim markers → `hypothesis_check`; review/sentiment keywords (`_REVIEW_INTENT`) → `uc2_reviews_sentiment`; metadata/rank keywords (`_META_INTENT`) → `uc1_store_metadata`; otherwise the release-health default `uc6_version_impact`. The app name is extracted by stripping `_STOPWORDS` (command, time-window, and intent words) and bare digits. Only if the heuristic can't decide does it fall back to the **LLM** router. Explicit params always win over extracted ones. Detects response language from the user's text.
 - **`core/registry.py`** — **auto-discovery is the central design rule.** It scans the `usecases/` and `connectors/` packages, imports every module, and collects concrete subclasses of `UseCase` / `AppDataConnector`. There is **no central list to edit** — dropping a new file into the package registers it. Modules named `base` or starting with `_` are skipped. `frameworks/base.py` has its own equivalent discovery in `framework_for()`.
 - **`core/deps.py`** — the `Deps` container built once at startup. Its key method is **`connector_for(capability, store)` / `connectors_for(...)`**: use cases never name a data source, they request a *capability* (`reviews`, `metadata`, `search`, `downloads`, `ranking`) for a store and get connectors best-first per the `PREFERENCE` map. Callers iterate and **fall back** through them when one errors. The LLM is lazy (`deps.llm` property) so connector-only paths and tests run without LLM env vars.
 
@@ -63,9 +65,15 @@ POST /invocations → main.handler → core.router.Router.handle → UseCase.run
 
 ### Use-case execution patterns
 
-The two shipped use cases follow distinct shapes worth knowing before editing either.
+**Sheet numbering ↔ code names.** Files map 1:1 to the "AI Agent UseCases" sheet: `uc1_store_metadata` (UC1), `uc2_reviews_sentiment` (UC2), `uc6_version_impact` (UC6 — before/after-release metric delta; this was historically misnamed `uc1_release_health`). `hypothesis_check` is a standalone module, not part of the sheet. `uc6_version_impact` implements the metric-delta core of UC6; full feature-attribution (which feature drove the change) additionally needs the UC5 feature timeline, not yet built.
 
-**`uc1_release_health` (single-shot).** `run` defaults `store` to `"both"` and analyses iOS + Android **concurrently** (`ThreadPoolExecutor`), then merges and warns if the two stores resolve to different-looking apps (`_names_match`). The core work in `_analyze_one` runs 7 numbered steps: resolve → metadata (+ **save a snapshot immediately**) → reviews split before/after `release_dt` → signals → verdict → LLM issue categorisation → summary. Critically there are **two parallel signal tracks**: review-based (`rating_delta`, velocity, `neg_share`) and metric-based (`metric_rating_delta` from the prior snapshot, which needs no review text — this is the iOS path). The first run only seeds the snapshot baseline; the trend appears from the second run on. Verdict precedence: review signals first, metric trend as fallback, flat = `inconclusive` (thresholds are module constants at the top of the file).
+The shipped use cases follow distinct shapes worth knowing before editing them.
+
+**`uc1_store_metadata` (sheet UC1, single-shot).** Resolve → enriched `get_metadata` (title, category, price, icon, screenshots, description, version, rating) → iOS chart rank via `ios_charts` (Android has no free rank) → save a `Snapshot` (now carrying `rank`) → deltas vs the prior snapshot (rating / version-changed / rank) → iOS+Android concurrent, merge → persist the normalised row via `storage.save_table("metadata", …)`. Version history accrues from snapshots (no free full-history source).
+
+**`uc2_reviews_sentiment` (sheet UC2, single-shot).** Resolve → fetch reviews over a window (`window_days` default 30, or `date_from`/`date_to`) via the reviews connectors with fallback → **deterministic** stats (volume, 1–5★ distribution, per-review language mix via `detect_lang`, **star-derived** sentiment, weekly trend) → **one bounded LLM call** clusters praise + complaint/bug themes (degrades to a note on timeout/no-LLM — sentiment never depends on it) → persist the raw review table. Sentiment is star-derived on purpose (cheap, no LLM-timeout risk); the LLM only does theme clustering on a sample. Competitor comparison is out of scope here (sheet UC7/UC8).
+
+**`uc6_version_impact` (sheet UC6, single-shot).** `run` defaults `store` to `"both"` and analyses iOS + Android **concurrently** (`ThreadPoolExecutor`), then merges and warns if the two stores resolve to different-looking apps (`_names_match`). The core work in `_analyze_one` runs 7 numbered steps: resolve → metadata (+ **save a snapshot immediately**) → reviews split before/after `release_dt` → signals → verdict → LLM issue categorisation → summary. Critically there are **two parallel signal tracks**: review-based (`rating_delta`, velocity, `neg_share`) and metric-based (`metric_rating_delta` from the prior snapshot, which needs no review text — this is the iOS path). The first run only seeds the snapshot baseline; the trend appears from the second run on. Verdict precedence: review signals first, metric trend as fallback, flat = `inconclusive` (thresholds are module constants at the top of the file).
 
 **`hypothesis_check` (multi-turn diagnostic).** This is the most intricate flow in the repo. Each turn: append the message to `deps.conversation` (keyed by `session_id`), then `_parse` has the LLM read the **entire conversation** and extract `{claim, missing, next_question}`. The claim is **re-derived from the full history every turn** — partial claim state is never persisted, which makes it robust. If any `REQUIRED_SLOTS` are missing it returns `status: "need_context"` with a question and waits for the next turn; only when complete does it `_analyze` and `clear` the session. `_analyze` is a framework engine:
 
@@ -78,14 +86,15 @@ This GATE is the intellectual-honesty mechanism: a signal whose data isn't reach
 
 ### Capability-gating and graceful degradation (critical invariant)
 
-Connectors **degrade gracefully and must never crash the agent**. A capability is tried best-source-first and falls through on error: a Sensor Tower token with metadata-only scope (reviews → 401) automatically falls back to Google Play; no review source for a store yields a metrics-only report, not a failure. `main.handler` wraps everything and never 500s — it returns `{"status": "error", ...}`. `build_deps` swallows individual connector construction failures. When adding a connector or use case, preserve this: gate calls on `supports()` / `capabilities()`, catch `ConnectorError`, and prefer a degraded result over an exception.
+Connectors **degrade gracefully and must never crash the agent**. A capability is tried best-source-first and falls through on error: a store with no usable source for a capability yields a metrics-only report, not a failure. (Sensor Tower is iOS-scoped, so Android never calls it — Android reviews come straight from Google Play.) `main.handler` wraps everything and never 500s — it returns `{"status": "error", ...}`. `build_deps` swallows individual connector construction failures. When adding a connector or use case, preserve this: gate calls on `supports()` / `capabilities()`, catch `ConnectorError`, and prefer a degraded result over an exception.
 
 ### Data-source reality (2026)
 
-- **iTunes** (free) — iOS metadata/ratings/version only; the reviews RSS feed is dead, so **iOS review text is unavailable for free** (rating + version + snapshot trend only).
+- **iTunes** (free) — iOS **search + metadata** only (`averageUserRating`, rating count, current version + release date, release notes). Reviews are NOT served here — see `appstore_reviews`.
+- **App Store reviews** (`appstore_reviews`, free) — iOS `reviews` with dates, **now available for free** (corrects the earlier "RSS dead" note). Primary source is the iTunes customer-reviews **RSS feed** (sorted newest→oldest, ~500 recent reviews ≈ ~1 month for a busy app; some pages return empty bodies at random, so empties are *retried*, not treated as end-of-data). Backfills deeper history from the undocumented `apps.apple.com` **Catalog API** (paginates by `offset` but **ignores `sort`** → filtered client-side). Both endpoints are undocumented + 429-prone, so requests are throttled. Net effect: UC1's iOS path can now do full review analysis **without** a Sensor Tower token (Sensor Tower still preferred when its token has reviews scope).
 - **iOS charts** (`ios_charts`, free) — iOS `ranking` only, via Apple's Marketing-Tools top-charts RSS (`top-free` / `top-paid`; **no top-grossing**, max 100 entries). Reports an app's chart position or `rank=None` if it's outside the top 100. Sensor Tower is still preferred for ranking (exact, any depth, historical); this is the free fallback.
 - **Google Play** (free, `google-play-scraper`) — Android metadata **and** reviews with dates; version is fuzzy.
-- **Sensor Tower** (`SENSORTOWER_AUTH_TOKEN`, optional) — reviews-with-dates, downloads/revenue, rankings, **subject to the token's API scope**. It already advertises `reviews` for iOS, so the day the token gains reviews scope, iOS review analysis lights up with no code change.
+- **Sensor Tower** (`SENSORTOWER_AUTH_TOKEN`, optional) — **iOS-only by design** (`stores = {"ios"}`): reviews-with-dates, downloads/revenue, rankings for the iOS gap, **subject to the token's API scope**. The day the token gains reviews scope, iOS review analysis lights up with no code change. Android is intentionally Google-Play-only, so Sensor Tower is never called for Android (widen its `stores` to change that).
 
 ### Other conventions
 

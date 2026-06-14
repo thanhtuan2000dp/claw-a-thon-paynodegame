@@ -8,8 +8,14 @@ the library, and callers fall back per capabilities().
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime
 from typing import Optional
+
+# Pulls the canonical package id out of a Play-store details URL embedded in the
+# featured search result's raw data (used to recover the appId the scraper drops).
+_DETAILS_ID_RE = re.compile(r"store/apps/details\?id=([A-Za-z0-9._]+)")
 
 from .base import (
     CAP_METADATA,
@@ -55,23 +61,65 @@ class GooglePlayConnector(AppDataConnector):
     def search_app(self, term: str, store: str = "android", country=None, lang=None) -> list[AppRef]:
         from google_play_scraper import search
 
+        ln, cn = lang or self.lang, country or self.country
         try:
-            hits = search(term, lang=lang or self.lang, country=country or self.country, n_hits=10)
+            hits = search(term, lang=ln, country=cn, n_hits=10)
         except Exception as exc:  # noqa: BLE001 - library raises plain Exceptions
             raise ConnectorError(f"Google Play search failed: {exc}") from exc
-        refs = [
-            AppRef(
-                app_id=h["appId"],
-                name=h.get("title", ""),
-                store="android",
-                publisher=h.get("developer"),
+
+        # google-play-scraper drops the appId of the top "featured" result — which
+        # is almost always the canonical app and the BEST match (e.g. "zalopay"
+        # returns the real consumer app first with appId=None, so dropping it
+        # leaves only the "ZaloPay Merchant" variant; "Spotify" → the 1B-install
+        # app vs the TV app). Recover the real package id from the featured
+        # result's own store URL in the raw page. Done once per search.
+        refs: list[AppRef] = []
+        seen: set[str] = set()
+        recovered_featured = False
+        for h in hits:
+            app_id = h.get("appId")
+            title = (h.get("title") or "").strip()
+            if not app_id and title and not recovered_featured:
+                recovered_featured = True
+                app_id = self._recover_featured_app_id(term, ln, cn)
+            if not app_id or app_id in seen:
+                continue
+            seen.add(app_id)
+            refs.append(
+                AppRef(app_id=app_id, name=title, store="android", publisher=h.get("developer"))
             )
-            for h in hits
-            if h.get("appId")  # search sometimes returns a null-id placeholder first
-        ]
         # Prefer an exact (case-insensitive) title match when present.
         refs.sort(key=lambda r: r.name.strip().lower() != term.strip().lower())
         return refs
+
+    @staticmethod
+    def _recover_featured_app_id(query: str, lang: str, country: str) -> Optional[str]:
+        """Recover the appId the scraper drops for the top "featured" result.
+
+        Re-fetches the search page with the library's own primitives, locates the
+        featured block (same path the library parses), and pulls the canonical
+        package id out of its embedded ``store/apps/details?id=...`` URL. Couples
+        to google-play-scraper internals, so it is fully defensive: any failure
+        returns None and the caller simply drops the un-recoverable hit.
+        """
+        try:
+            from urllib.parse import quote
+
+            from google_play_scraper.constants.regex import Regex
+            from google_play_scraper.constants.request import Formats
+            from google_play_scraper.utils.request import get
+
+            dom = get(Formats.Searchresults.build(query=quote(query), lang=lang, country=country))
+            dataset: dict = {}
+            for match in Regex.SCRIPT.findall(dom):
+                keys, values = Regex.KEY.findall(match), Regex.VALUE.findall(match)
+                if keys and values:
+                    dataset[keys[0]] = json.loads(values[0])
+            featured = dataset["ds:4"][0][1][0][23][16]
+            hit = _DETAILS_ID_RE.search(json.dumps(featured))
+            return hit.group(1) if hit else None
+        except Exception:  # noqa: BLE001 - best-effort; never break search on a layout change
+            return None
 
     def get_metadata(self, app_id: str, store: str = "android", country=None, lang=None) -> AppMetadata:
         from google_play_scraper import app as gp_app
@@ -91,6 +139,15 @@ class GooglePlayConnector(AppDataConnector):
             first_release_date=None,
             release_notes=a.get("recentChanges"),
             publisher=a.get("developer"),
+            category=a.get("genre"),
+            price=(
+                "Free"
+                if a.get("free")
+                else (f"{a.get('price')} {a.get('currency')}".strip() if a.get("price") is not None else None)
+            ),
+            icon_url=a.get("icon"),
+            screenshot_urls=a.get("screenshots") or [],
+            description=a.get("description"),
             raw={},
         )
 

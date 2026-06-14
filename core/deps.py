@@ -19,8 +19,13 @@ from core.registry import discover_connector_classes
 from storage.snapshots import SnapshotStore
 
 # Preferred connector order per capability (premium source first where it wins).
+# Sensor Tower is scoped to iOS (see its ``stores``), so on Android these lists
+# resolve to the free sources only — no wasted Sensor Tower round-trip.
 PREFERENCE: dict[str, list[str]] = {
-    "reviews": ["sensortower", "googleplay"],
+    # iOS reviews: Sensor Tower if its token has the scope, else the free App
+    # Store RSS/Catalog connector. Android reviews: Google Play (the others are
+    # iOS-only, so they filter out on Android).
+    "reviews": ["sensortower", "appstore_reviews", "googleplay"],
     "downloads": ["sensortower"],
     "ranking": ["sensortower", "ios_charts"],
     "metadata": ["itunes", "googleplay", "sensortower"],

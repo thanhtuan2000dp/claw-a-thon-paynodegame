@@ -1,7 +1,7 @@
 """Request router.
 
 Dispatches an incoming request to a use case, two ways:
-  • explicit:  {"action": "uc1_release_health", "params": {...}}
+  • explicit:  {"action": "uc6_version_impact", "params": {...}}
   • natural:   {"message": "kiểm tra sức khỏe bản cập nhật Instagram"}  -> LLM picks action + params
 
 Adding a use case to the ``usecases`` package makes it routable automatically.
@@ -19,14 +19,52 @@ _HYPO_MARKERS = (
     "làm tăng", "làm giảm", "tăng do", "giảm do", "vì lỗi", "do lỗi", "nhờ tính năng",
     "because", "caused", "is due to", "drove",
 )
-# Command words to strip when extracting an app name from a release-health query.
+# Intent keywords (matched as substrings on the lowercased message) that steer the
+# heuristic to a specific use case. Review/sentiment is checked before metadata
+# (the more specific ask); neither present → the release-health default.
+_REVIEW_INTENT = (
+    "review", "đánh giá", "nhận xét", "sentiment", "cảm xúc", "phàn nàn", "than phiền",
+    "feedback", "bình luận", "comment", "ý kiến", "góp ý", "khen", "chê",
+    "complaint", "praise", "opinion",
+)
+_META_INTENT = (
+    "metadata", "thông tin", "rank", "xếp hạng", "thứ hạng", "bảng xếp hạng", "danh mục",
+    "category", "screenshot", "ảnh chụp", "mô tả", "description", "icon", "thông số", "info",
+)
+
+# Command words to strip when extracting an app name from a query.
 _STOPWORDS = {
     "kiểm", "tra", "bản", "cập", "nhật", "mới", "nhất", "gần", "đây", "sức", "khỏe", "phân",
     "tích", "của", "app", "ứng", "dụng", "đánh", "giá", "xem", "cho", "tôi", "review", "reviews",
     "tình", "hình", "trên", "thế", "nào", "ra", "sao",
     "check", "the", "latest", "update", "release", "health", "analyze", "analyse", "for", "of",
     "how", "is", "doing", "on", "status", "a", "an", "please",
+    # time-window words — "1 tháng gần đây", "tuần qua", "tháng này", "last month", ...
+    # (standalone digits are dropped separately, so "1 tháng" leaves nothing behind)
+    "tháng", "tuần", "ngày", "năm", "qua", "vừa", "rồi", "này", "nay", "hôm", "trong",
+    "khoảng", "dạo", "month", "months", "week", "weeks", "day", "days", "year", "years",
+    "last", "past", "recent", "recently", "this",
+    # intent words (so review/metadata keywords don't leak into the app name)
+    "metadata", "sentiment", "feedback", "comment", "comments", "info", "rank", "ranking",
+    "category", "screenshot", "screenshots", "icon", "description", "store", "play",
+    "nhận", "xét", "phàn", "nàn", "than", "phiền", "cảm", "xúc", "bình", "luận", "khen", "chê",
+    "thông", "tin", "danh", "mục", "xếp", "hạng", "thứ", "bảng", "mô", "tả", "ảnh", "chụp",
+    "góp", "ý", "kiến", "complaint", "complaints", "praise", "opinion", "opinions",
+    # platform words (stripped from the app name; also used to set `store`)
+    "ios", "iphone", "ipad", "android", "appstore", "playstore", "googleplay", "apple", "google",
 }
+
+# Platform mentions -> store param. Checked as substrings on the lowercased message.
+_IOS_HINTS = ("ios", "iphone", "ipad", "app store", "appstore", "apple store")
+_ANDROID_HINTS = ("android", "google play", "play store", "playstore", "ch play", "chplay")
+
+
+def _detect_store(low: str):
+    if any(h in low for h in _IOS_HINTS):
+        return "ios"
+    if any(h in low for h in _ANDROID_HINTS):
+        return "android"
+    return None
 
 
 def _heuristic_route(message: str):
@@ -36,19 +74,36 @@ def _heuristic_route(message: str):
     low = message.lower()
     if any(m in low for m in _HYPO_MARKERS):
         return ("hypothesis_check", {"statement": message})
+    # Intent -> action. Review/sentiment beats metadata when both appear (more
+    # specific); neither present -> the release-health default (sheet UC6).
+    if any(k in low for k in _REVIEW_INTENT):
+        action = "uc2_reviews_sentiment"
+    elif any(k in low for k in _META_INTENT):
+        action = "uc1_store_metadata"
+    else:
+        action = "uc6_version_impact"
+    # A platform mention narrows the store (and is stripped from the app name below).
+    store = _detect_store(low)
+
+    def params(app: str) -> dict:
+        p = {"app": app}
+        if store:
+            p["store"] = store
+        return p
+
     # Explicit store id: Android package (com.x.y) or iOS trackId (long digits).
     pkg = re.search(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}", low)
     if pkg:
-        return ("uc1_release_health", {"app": pkg.group(0)})
+        return (action, params(pkg.group(0)))
     tid = re.search(r"\b\d{6,}\b", low)
     if tid:
-        return ("uc1_release_health", {"app": tid.group(0)})
+        return (action, params(tid.group(0)))
     # Strip command words -> the remaining tokens are the app name.
     tokens = re.findall(r"[^\s,.;:!?()]+", message)
-    kept = [t for t in tokens if t.lower() not in _STOPWORDS]
+    kept = [t for t in tokens if t.lower() not in _STOPWORDS and not t.isdigit()]
     app = " ".join(kept).strip()
     if app and len(app) <= 40:
-        return ("uc1_release_health", {"app": app})
+        return (action, params(app))
     return None
 
 

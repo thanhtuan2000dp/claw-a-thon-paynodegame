@@ -1,8 +1,12 @@
-"""UC1 — Post-Release Health Check.
+"""Sheet UC6 — Version Impact (post-release health check).
 
 For any user-chosen app: resolve it, find the latest release, pull reviews around
 that release, and report whether the build looks healthy — rating movement,
 review velocity, negative-share shift — plus LLM-categorised new complaints.
+
+This is the metric-delta / before-after-release core of sheet UC6. Full UC6
+("which feature drove the change") additionally needs the UC5 feature timeline;
+that attribution layer is not built yet.
 
 Pure Python + connectors + LLM; no greennode-agentbase import, so it is unit
 testable against live iTunes/Google Play data without the runtime.
@@ -79,8 +83,8 @@ def _neg_share(reviews: list[Review]) -> Optional[float]:
     return 100.0 * neg / len(rated)
 
 
-class ReleaseHealthUseCase(UseCase):
-    name = "uc1_release_health"
+class VersionImpactUseCase(UseCase):
+    name = "uc6_version_impact"
     description = (
         "Post-release health check for any app: rating movement, review velocity, "
         "and newly surfaced complaints around the latest update."
@@ -227,9 +231,8 @@ class ReleaseHealthUseCase(UseCase):
         reviews: list[Review] = []
         if not review_conns:
             notes.append(
-                f"No review-text source for {store} "
-                f"(App Store reviews are not public; Sensor Tower token not set / "
-                f"Google Play is Android-only). Metrics-only report."
+                f"No review-text source available for {store} "
+                f"(no connector advertised the 'reviews' capability). Metrics-only report."
             )
         else:
             now = datetime.utcnow()
