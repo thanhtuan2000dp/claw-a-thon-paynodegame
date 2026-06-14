@@ -11,7 +11,7 @@ _VERDICT_WORD = {
     "vi": {"healthy": "KHỎE", "regression": "TỤT LÙI", "inconclusive": "CHƯA KẾT LUẬN"},
 }
 
-_UC1_LABELS = {
+_UC6_LABELS = {
     "en": {
         "title": "Release Health", "build": "Build", "released": "Released", "verdict": "Verdict",
         "signal": "Signal", "before": "Before", "after": "After", "avg_rating": "Avg rating",
@@ -54,17 +54,40 @@ class MarkdownOutput(OutputChannel):
         uc = result.get("use_case")
         if uc == "hypothesis_check":
             return self._render_hypothesis(result)
-        if uc == "uc1_release_health":
+        if uc == "uc6_version_impact":
             if result.get("mode") == "cross_platform":
-                return self._render_uc1_cross(result)
-            return self._render_uc1_single(result)
+                return self._render_uc6_cross(result)
+            return self._render_uc6_single(result)
+        if uc == "uc1_store_metadata":
+            return self._render_cross(result, self._render_meta_single, "📦", "Store metadata", "Metadata cửa hàng") \
+                if result.get("mode") == "cross_platform" else self._render_meta_single(result)
+        if uc == "uc2_reviews_sentiment":
+            return self._render_cross(result, self._render_reviews_single, "💬", "Reviews & sentiment", "Review & sentiment") \
+                if result.get("mode") == "cross_platform" else self._render_reviews_single(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
 
-    def _render_uc1_cross(self, result: dict) -> str:
+    # Shared cross-platform wrapper for the sheet UC1/UC2 use cases.
+    def _render_cross(self, result: dict, single_fn, icon: str, title_en: str, title_vi: str) -> str:
+        lang = result.get("lang", "en")
+        title = title_vi if lang == "vi" else title_en
+        lines = [f"# {icon} {title} — {result.get('app_query', '?')} (iOS + Android)", ""]
+        if result.get("warning"):
+            lines += [f"> {result['warning']}", ""]
+        for key, label in (("ios", "🍎 iOS"), ("android", "🤖 Android")):
+            p = result.get("platforms", {}).get(key, {})
+            lines.append("---")
+            if p.get("error"):
+                lines.append(f"### {label}\n⚠️ {p['error']}")
+            else:
+                lines.append(single_fn(p))
+            lines.append("")
+        return "\n".join(lines)
+
+    def _render_uc6_cross(self, result: dict) -> str:
         plats = result.get("platforms", {})
         lang = result.get("lang", "en")
-        L = _UC1_LABELS.get(lang, _UC1_LABELS["en"])
+        L = _UC6_LABELS.get(lang, _UC6_LABELS["en"])
         VW = _VERDICT_WORD.get(lang, _VERDICT_WORD["en"])
         lines = [f"# 📱 {L['title']} — {result.get('app_query', '?')} (iOS + Android)", ""]
         if result.get("warning"):
@@ -89,18 +112,18 @@ class MarkdownOutput(OutputChannel):
             if p.get("error"):
                 lines.append(f"### {label}\n⚠️ {p['error']}")
             else:
-                lines.append(self._render_uc1_single(p))
+                lines.append(self._render_uc6_single(p))
             lines.append("")
         return "\n".join(lines)
 
-    def _render_uc1_single(self, result: dict) -> str:
+    def _render_uc6_single(self, result: dict) -> str:
         app = result.get("app", {})
         rel = result.get("release", {})
         sig = result.get("signals", {})
         verdict = result.get("verdict", "inconclusive")
         icon = _VERDICT_ICON.get(verdict, "🟡")
         lang = result.get("lang", "en")
-        L = _UC1_LABELS.get(lang, _UC1_LABELS["en"])
+        L = _UC6_LABELS.get(lang, _UC6_LABELS["en"])
         vword = _VERDICT_WORD.get(lang, _VERDICT_WORD["en"]).get(verdict, verdict.upper())
 
         lines: list[str] = []
@@ -174,6 +197,96 @@ class MarkdownOutput(OutputChannel):
             lines.append(f"### {L['summary']}")
             lines.append(result["summary"])
 
+        return "\n".join(lines)
+
+    # ---- sheet UC1: store metadata ----
+    def _render_meta_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        m, rk, h = r.get("metadata", {}), r.get("ranking", {}), r.get("history", {})
+        L = {
+            "title": "Metadata cửa hàng" if vi else "Store metadata",
+            "cat": "Danh mục" if vi else "Category", "price": "Giá" if vi else "Price",
+            "rel": "Phát hành" if vi else "Released", "rating": "Rating tổng" if vi else "Overall rating",
+            "since": "từ" if vi else "since", "shots": "ảnh" if vi else "screenshots",
+            "newver": "version mới" if vi else "new version",
+            "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary",
+        }
+        lines = [f"## 📦 {L['title']} — {m.get('name', '?')} ({m.get('store', '')})", ""]
+        lines.append(
+            f"**{L['cat']}:** {m.get('category') or 'n/a'} · **{L['price']}:** {m.get('price') or 'n/a'} · "
+            f"**Version:** `{m.get('version') or '?'}` · **{L['rel']}:** {m.get('release_date') or '?'}"
+        )
+        cnt = m.get("rating_count")
+        cnt_str = f" ({cnt:,} ratings)" if isinstance(cnt, int) else ""
+        lines.append(f"**{L['rating']}:** {_fmt(m.get('avg_rating'))}{cnt_str}")
+        if rk.get("rank"):
+            lines.append(f"**Rank:** {rk.get('chart')} #{rk['rank']} ({rk.get('country')})")
+        bits = []
+        if h.get("rating_delta") is not None:
+            bits.append(f"rating {_signed(h['rating_delta'], 3)}")
+        if h.get("rank_delta") is not None:
+            bits.append(f"rank {h['rank_delta']:+d}")
+        if h.get("version_changed"):
+            bits.append(L["newver"])
+        if bits:
+            lines.append(f"**Δ {L['since']} {h.get('baseline_date')}:** " + ", ".join(bits))
+        if m.get("screenshot_count"):
+            lines += ["", f"_{m['screenshot_count']} {L['shots']}_"]
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC2: reviews & sentiment ----
+    def _render_reviews_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, w, t = r.get("app", {}), r.get("window", {}), r.get("totals", {})
+        s, star, themes = r.get("sentiment", {}), r.get("star_distribution", {}), r.get("themes", {})
+        L = {
+            "title": "Review & sentiment" if vi else "Reviews & sentiment",
+            "period": "Khoảng" if vi else "Window", "n": "Số review" if vi else "Reviews",
+            "lang": "Ngôn ngữ" if vi else "Languages", "trend": "Xu hướng tuần" if vi else "Weekly trend",
+            "praise": "👍 Khen" if vi else "👍 Praise", "comp": "👎 Phàn nàn / bug" if vi else "👎 Complaints / bugs",
+            "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary",
+            "neg": "tiêu cực" if vi else "neg",
+        }
+        lines = [f"## 💬 {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(
+            f"**{L['period']}:** {w.get('from')} → {w.get('to')} · "
+            f"**{L['n']}:** {t.get('reviews', 0)} · avg {_fmt(r.get('avg_rating'))}"
+        )
+        lines.append(
+            f"**Sentiment:** 🟢 {s.get('positive', {}).get('pct', 0)}% · "
+            f"⚪ {s.get('neutral', {}).get('pct', 0)}% · 🔴 {s.get('negative', {}).get('pct', 0)}%"
+        )
+        lines += ["", "| ★ | # | % |", "|---|---|---|"]
+        for st in ("5", "4", "3", "2", "1"):
+            d = star.get(st, {})
+            lines.append(f"| {st}★ | {d.get('count', 0)} | {d.get('pct', 0)}% |")
+        ld = r.get("language_distribution", {})
+        if ld:
+            lines += ["", f"**{L['lang']}:** " + ", ".join(f"{k} {v['pct']}%" for k, v in ld.items())]
+        wt = r.get("weekly_trend", [])
+        if wt:
+            lines += ["", f"**{L['trend']}:**"]
+            for row in wt[-6:]:
+                lines.append(
+                    f"- {row['week']}: {row['volume']} review · avg {_fmt(row.get('avg_rating'))} · "
+                    f"{row.get('negative_pct', 0)}% {L['neg']}"
+                )
+        for key, label in (("praise", L["praise"]), ("complaints", L["comp"])):
+            items = themes.get(key, [])
+            if items:
+                lines += ["", f"### {label}"]
+                for it in items:
+                    lines.append(f"- **{it.get('theme', '?')}** ({it.get('count', 0)})")
+                    for ex in it.get("examples", [])[:2]:
+                        lines.append(f"  - _{ex}_")
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
         return "\n".join(lines)
 
     _VERDICT_LABEL = {

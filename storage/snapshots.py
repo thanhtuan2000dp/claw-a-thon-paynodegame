@@ -24,6 +24,7 @@ class Snapshot:
     avg_rating: Optional[float] = None
     rating_count: Optional[int] = None
     current_version_release_date: Optional[str] = None
+    rank: Optional[int] = None  # top-chart position (sheet UC1); None = not in chart
 
 
 class SnapshotStore:
@@ -38,6 +39,22 @@ class SnapshotStore:
         os.makedirs(self.base_dir, exist_ok=True)
         with open(self._path(snap.app_id, snap.store), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(asdict(snap), ensure_ascii=False) + "\n")
+
+    def save_table(self, kind: str, app_id: str, store: str, rows: list[dict],
+                   captured_at: Optional[str] = None) -> str:
+        """Persist a raw table (e.g. UC1 metadata rows, UC2 reviews) as JSON so
+        downstream use cases (dashboard, weakness mining) can reuse it without
+        re-crawling. Written under ``data/<kind>/`` next to the snapshot dir.
+        Returns the file path. Ephemeral in a container — same caveat as snapshots."""
+        parent = os.path.dirname(self.base_dir) or "."
+        out_dir = os.path.join(parent, kind)
+        os.makedirs(out_dir, exist_ok=True)
+        safe = f"{store}_{app_id}".replace("/", "_").replace("..", "_")
+        suffix = f"_{captured_at}" if captured_at else ""
+        path = os.path.join(out_dir, f"{safe}{suffix}.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(rows, fh, ensure_ascii=False, indent=2)
+        return path
 
     def history(self, app_id: str, store: str) -> list[Snapshot]:
         path = self._path(app_id, store)
