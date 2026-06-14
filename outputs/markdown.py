@@ -68,6 +68,8 @@ class MarkdownOutput(OutputChannel):
             return self._render_uc7(result)
         if uc == "uc8_competitor_weakness":
             return self._render_uc8(result)
+        if uc == "uc10_insight_qa":
+            return self._render_uc10(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
 
@@ -291,6 +293,34 @@ class MarkdownOutput(OutputChannel):
             lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
         if r.get("summary"):
             lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC10: insight & NL Q&A ----
+    def _render_uc10(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        L = {
+            "title": "Tư vấn & khuyến nghị" if vi else "Insight & recommendations",
+            "q": "Câu hỏi" if vi else "Question", "used": "Đã chạy" if vi else "Analyses run",
+            "actions": "✅ Hành động đề xuất" if vi else "✅ Recommended actions",
+            "notes": "Ghi chú" if vi else "Notes",
+        }
+        lines = [f"## 🧭 {L['title']}", "", f"**{L['q']}:** {r.get('question', '?')}"]
+        used = r.get("analyses_run", [])
+        if used:
+            lines.append(f"_{L['used']}: {', '.join(used)}_")
+        if r.get("answer"):
+            lines += ["", r["answer"]]
+        items = r.get("action_items", [])
+        if items:
+            lines += ["", f"### {L['actions']}"]
+            for it in items:
+                pri = (it.get("priority") or "").lower()
+                tag = {"high": "🔴", "medium": "🟡", "low": "⚪"}.get(pri, "•")
+                lines.append(f"- {tag} **{it.get('action', '?')}** — {it.get('rationale') or ''}")
+        if r.get("notes"):
+            real = [n for n in r["notes"] if n]
+            if real:
+                lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
         return "\n".join(lines)
 
     # ---- sheet UC7: competitive comparison ----

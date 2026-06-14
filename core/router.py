@@ -166,6 +166,9 @@ class Router:
             action, extracted = self._route_nl(message, self._recent.get(session_id))
             # explicit params win over extracted ones
             params = {**extracted, **params}
+            # keep the raw user text available for use cases that need it verbatim
+            # (uc10 question, hypothesis_check statement) — never overrides extracted.
+            params.setdefault("message", message)
 
         # Auto-detect response language from the user's own words (full message is
         # the best signal; fall back to any text params). Use cases localise output.
