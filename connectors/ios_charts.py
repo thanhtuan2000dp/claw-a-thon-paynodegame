@@ -25,7 +25,7 @@ from typing import Optional
 
 import httpx
 
-from .base import CAP_RANKING, AppDataConnector, ConnectorError, RankPoint
+from .base import CAP_CATEGORY, CAP_RANKING, AppDataConnector, AppRef, ConnectorError, RankPoint
 
 BASE_URL = "https://rss.marketingtools.apple.com/api/v2"
 
@@ -53,7 +53,16 @@ class IosChartsConnector(AppDataConnector):
         self.timeout = timeout
 
     def capabilities(self) -> set[str]:
-        return {CAP_RANKING}
+        return {CAP_RANKING, CAP_CATEGORY}
+
+    def category_apps(self, genre_id, store="ios", country=None, lang=None, limit=25) -> list[AppRef]:
+        """Same-category competitors: the genre top-free chart, rank-ordered."""
+        results = self._fetch_genre_chart(str(genre_id), country or self.country)
+        refs: list[AppRef] = []
+        for a in results[:limit]:
+            if a.get("id"):
+                refs.append(AppRef(app_id=str(a["id"]), name=a.get("name") or "", store="ios"))
+        return refs
 
     def _feed_for(self, category: Optional[str]) -> str:
         if not category:
@@ -70,12 +79,50 @@ class IosChartsConnector(AppDataConnector):
             raise ConnectorError(f"iOS charts {feed}/{country} failed: {exc}") from exc
         return data.get("feed", {}).get("results", []) or []
 
+    def _fetch_genre_chart(self, genre_id: str, country: str) -> list[dict]:
+        """Top-free chart WITHIN a genre via the old iTunes RSS (the marketingtools v2
+        feed has no genre filter). Returns ordered apps — the app's position is its
+        category rank, and the rest are its same-category competitors. Verified
+        2026-06-14 (vn/6015 Finance). Up to 200 entries."""
+        url = (f"https://itunes.apple.com/{country.lower()}/rss/topfreeapplications/"
+               f"limit=200/genre={genre_id}/json")
+        try:
+            resp = httpx.get(url, timeout=self.timeout, follow_redirects=True)
+            resp.raise_for_status()
+            entries = resp.json().get("feed", {}).get("entry", []) or []
+        except httpx.HTTPError as exc:
+            raise ConnectorError(f"iOS genre chart {genre_id}/{country} failed: {exc}") from exc
+        if isinstance(entries, dict):  # a single-entry feed comes back unwrapped
+            entries = [entries]
+        out = []
+        for e in entries:
+            out.append({
+                "id": (e.get("id", {}).get("attributes", {}) or {}).get("im:id"),
+                "name": (e.get("im:name", {}) or {}).get("label"),
+                "genre": (e.get("category", {}).get("attributes", {}) or {}).get("label"),
+            })
+        return out
+
     def get_ranking(
-        self, app_id: str, store: str, category: str, date: datetime
+        self, app_id: str, store: str, category: str, date: datetime,
+        country: Optional[str] = None, lang: Optional[str] = None,
     ) -> RankPoint:
+        cn = country or self.country  # charts are per-market — use the request's country
+        cat = (category or "").strip()
+        # A numeric category is a genre id -> report the in-CATEGORY rank (more useful
+        # than the overall chart, where mid-size apps fall outside the top 100).
+        if cat.isdigit():
+            results = self._fetch_genre_chart(cat, cn)
+            label = next((a["genre"] for a in results if a.get("genre")), cat)
+            rank: Optional[int] = None
+            for pos, app in enumerate(results, start=1):
+                if str(app.get("id")) == str(app_id):
+                    rank = pos
+                    break
+            return RankPoint(date=date, category=label, rank=rank)
         feed = self._feed_for(category)
-        results = self._fetch_chart(feed, self.country)
-        rank: Optional[int] = None
+        results = self._fetch_chart(feed, cn)
+        rank = None
         for pos, app in enumerate(results, start=1):
             if str(app.get("id")) == str(app_id):
                 rank = pos

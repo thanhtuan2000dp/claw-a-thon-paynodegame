@@ -46,6 +46,50 @@ def resolve_app(
     return hits[0] if hits else None
 
 
+def snapshot_app(
+    app_query: str, store: str, deps: "Deps", country: Optional[str] = None, lang: Optional[str] = None
+) -> Optional[dict]:
+    """Resolve an app, fetch current metadata + category rank, append a daily snapshot,
+    and return ``{ref, meta, rank, rank_chart, history}``. Returns None if it can't
+    resolve or fetch metadata. Shared by the snapshot-trend use cases (UC4/UC9) — does
+    NOT touch uc1's own copy. Ranking failures degrade to rank=None (silent)."""
+    from datetime import datetime
+
+    from connectors.base import CAP_METADATA, CAP_RANKING
+    from storage.snapshots import Snapshot
+
+    ref = resolve_app(app_query, store, deps, country, lang)
+    if ref is None or not ref.app_id:
+        return None
+    meta_conn = deps.connector_for(CAP_METADATA, store)
+    if meta_conn is None:
+        return None
+    try:
+        meta = meta_conn.get_metadata(ref.app_id, store, country=country, lang=lang)
+    except ConnectorError:
+        return None
+
+    rank, rank_chart = None, None
+    for rc in deps.connectors_for(CAP_RANKING, store):
+        try:
+            rp = rc.get_ranking(meta.app_id, store, meta.genre_id or "top-free",
+                                datetime.utcnow(), country=country, lang=lang)
+            rank, rank_chart = rp.rank, rp.category
+            break
+        except ConnectorError:
+            continue
+
+    rel = meta.current_version_release_date
+    deps.storage.save(Snapshot(
+        captured_at=datetime.utcnow().date().isoformat(),
+        app_id=meta.app_id, store=store, version=meta.version,
+        avg_rating=meta.avg_rating, rating_count=meta.rating_count,
+        current_version_release_date=rel.isoformat() if rel else None, rank=rank,
+    ))
+    return {"ref": ref, "meta": meta, "rank": rank, "rank_chart": rank_chart,
+            "history": deps.storage.history(meta.app_id, store)}
+
+
 class UseCase(ABC):
     #: stable identifier used as the ``action`` in requests
     name: str = "base"

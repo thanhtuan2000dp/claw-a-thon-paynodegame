@@ -96,6 +96,8 @@ class ItunesConnector(AppDataConnector):
             release_notes=a.get("releaseNotes"),
             publisher=a.get("sellerName"),
             category=a.get("primaryGenreName"),
+            genre_id=(str(a["primaryGenreId"]) if a.get("primaryGenreId") is not None
+                      else (a.get("genreIds") or [None])[0]),
             price=a.get("formattedPrice")
             or (str(a.get("price")) if a.get("price") is not None else None),
             icon_url=a.get("artworkUrl512") or a.get("artworkUrl100") or a.get("artworkUrl60"),

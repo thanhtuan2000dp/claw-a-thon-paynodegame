@@ -64,6 +64,18 @@ class MarkdownOutput(OutputChannel):
         if uc == "uc2_reviews_sentiment":
             return self._render_cross(result, self._render_reviews_single, "💬", "Reviews & sentiment", "Review & sentiment") \
                 if result.get("mode") == "cross_platform" else self._render_reviews_single(result)
+        if uc == "uc7_competitive_comparison":
+            return self._render_uc7(result)
+        if uc == "uc8_competitor_weakness":
+            return self._render_uc8(result)
+        if uc == "uc10_insight_qa":
+            return self._render_uc10(result)
+        if uc == "uc4_kpi_dashboard":
+            return self._render_cross(result, self._render_uc4_single, "📈", "KPI dashboard", "Bảng KPI") \
+                if result.get("mode") == "cross_platform" else self._render_uc4_single(result)
+        if uc == "uc9_trend_alert":
+            return self._render_cross(result, self._render_uc9_single, "🚨", "Trend alerts", "Cảnh báo biến động") \
+                if result.get("mode") == "cross_platform" else self._render_uc9_single(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
 
@@ -283,6 +295,169 @@ class MarkdownOutput(OutputChannel):
                     lines.append(f"- **{it.get('theme', '?')}** ({it.get('count', 0)})")
                     for ex in it.get("examples", [])[:2]:
                         lines.append(f"  - _{ex}_")
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC10: insight & NL Q&A ----
+    def _render_uc10(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        L = {
+            "title": "Tư vấn & khuyến nghị" if vi else "Insight & recommendations",
+            "q": "Câu hỏi" if vi else "Question", "used": "Đã chạy" if vi else "Analyses run",
+            "actions": "✅ Hành động đề xuất" if vi else "✅ Recommended actions",
+            "notes": "Ghi chú" if vi else "Notes",
+        }
+        lines = [f"## 🧭 {L['title']}", "", f"**{L['q']}:** {r.get('question', '?')}"]
+        used = r.get("analyses_run", [])
+        if used:
+            lines.append(f"_{L['used']}: {', '.join(used)}_")
+        if r.get("answer"):
+            lines += ["", r["answer"]]
+        items = r.get("action_items", [])
+        if items:
+            lines += ["", f"### {L['actions']}"]
+            for it in items:
+                pri = (it.get("priority") or "").lower()
+                tag = {"high": "🔴", "medium": "🟡", "low": "⚪"}.get(pri, "•")
+                lines.append(f"- {tag} **{it.get('action', '?')}** — {it.get('rationale') or ''}")
+        if r.get("notes"):
+            real = [n for n in r["notes"] if n]
+            if real:
+                lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
+        return "\n".join(lines)
+
+    # ---- sheet UC4: KPI dashboard ----
+    def _render_uc4_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, k, d = r.get("app", {}), r.get("kpis", {}), r.get("deltas", {})
+        L = {"title": "Bảng KPI" if vi else "KPI dashboard", "n": "Lượt rating" if vi else "Ratings",
+             "since": "từ" if vi else "since", "date": "Ngày" if vi else "Date",
+             "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary"}
+        cnt = k.get("ratings_count")
+        cnt_s = f"{cnt:,}" if isinstance(cnt, int) else "n/a"
+        lines = [f"## 📈 {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(f"**Rating:** {_fmt(k.get('rating'))} · **Rank:** {k.get('rank_chart') or '?'} "
+                     f"#{k.get('rank') or 'n/a'} · **{L['n']}:** {cnt_s} · **Version:** `{k.get('version') or '?'}`")
+        if d.get("since"):
+            bits = []
+            if d.get("rating") is not None:
+                bits.append(f"rating {_signed(d['rating'], 3)}")
+            if d.get("rank") is not None:
+                bits.append(f"rank {d['rank']:+d}")
+            if isinstance(d.get("ratings_count"), int):
+                bits.append(f"{d['ratings_count']:+,} ratings")
+            if bits:
+                lines.append(f"**Δ {L['since']} {d['since']}:** " + ", ".join(bits))
+        trend = r.get("trend", [])
+        if len(trend) > 1:
+            lines += ["", f"| {L['date']} | Rating | Rank | {L['n']} |", "|---|---|---|---|"]
+            for row in trend[-8:]:
+                rc = row.get("ratings_count")
+                lines.append(f"| {row['date']} | {_fmt(row.get('rating'))} | {row.get('rank') or 'n/a'} | "
+                             f"{rc:,} |" if isinstance(rc, int) else
+                             f"| {row['date']} | {_fmt(row.get('rating'))} | {row.get('rank') or 'n/a'} | n/a |")
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC9: trend & anomaly alert ----
+    def _render_uc9_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, cur = r.get("app", {}), r.get("current", {})
+        L = {"title": "Cảnh báo biến động" if vi else "Trend alerts",
+             "now": "Hiện tại" if vi else "Now", "alerts": "🚨 Cảnh báo" if vi else "🚨 Alerts",
+             "since": "từ" if vi else "since"}
+        lines = [f"## 🚨 {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(f"**{L['now']}:** rating {_fmt(cur.get('rating'))} · "
+                     f"rank {cur.get('rank_chart') or '?'} #{cur.get('rank') or 'n/a'} · v`{cur.get('version') or '?'}`")
+        if r.get("status") == "baseline_seeded":
+            lines += ["", f"_{r.get('summary', '')}_"]
+            return "\n".join(lines)
+        alerts = r.get("alerts", [])
+        icon = {"high": "🔴", "medium": "🟡", "info": "🔵"}
+        if alerts:
+            lines += ["", f"### {L['alerts']} ({L['since']} {r.get('baseline_date')})"]
+            lines += [f"- {icon.get(a.get('severity'), '•')} {a.get('message')}" for a in alerts]
+        else:
+            lines += ["", f"✅ {r.get('summary', '')}"]
+        return "\n".join(lines)
+
+    # ---- sheet UC7: competitive comparison ----
+    def _render_uc7(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app = r.get("app", {})
+        L = {
+            "title": "So sánh cạnh tranh" if vi else "Competitive comparison",
+            "appc": "App" if vi else "App", "rank": "Rank", "rating": "Rating",
+            "n": "Lượt rating" if vi else "Ratings", "price": "Giá" if vi else "Price",
+            "leaders": "Dẫn đầu" if vi else "Leaders", "scale": "quy mô" if vi else "scale",
+            "insights": "📊 Định vị" if vi else "📊 Positioning", "notes": "Ghi chú" if vi else "Notes",
+            "summary": "Tóm tắt" if vi else "Summary",
+        }
+        cat = app.get("category")
+        lines = [f"## ⚔️ {L['title']} — {app.get('name', '?')}" + (f" · {cat}" if cat else ""), ""]
+        lines += [f"| {L['appc']} | {L['rank']} | {L['rating']} | {L['n']} | {L['price']} | Version |",
+                  "|---|---|---|---|---|---|"]
+        for row in r.get("comparison", []):
+            mark = "⭐ " if row.get("is_you") else ""
+            cnt = row.get("ratings_count")
+            cnt_s = f"{cnt:,}" if isinstance(cnt, int) else "n/a"
+            lines.append(
+                f"| {mark}{row.get('name', '?')} | {row.get('rank') or 'n/a'} | "
+                f"{_fmt(row.get('rating'))} | {cnt_s} | {row.get('price') or 'n/a'} | "
+                f"{row.get('version') or 'n/a'} |"
+            )
+        ld = r.get("leaders", {})
+        lines += ["", f"**{L['leaders']}:** rating → {ld.get('rating') or 'n/a'} · "
+                  f"rank → {ld.get('rank') or 'n/a'} · {L['scale']} → {ld.get('ratings_count') or 'n/a'}"]
+        pos = r.get("positioning", [])
+        if pos:
+            lines += ["", f"### {L['insights']}"] + [f"- {p}" for p in pos]
+        if r.get("notes"):
+            real = [n for n in r["notes"] if n]
+            if real:
+                lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC8: competitor weakness mining ----
+    def _render_uc8(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, w = r.get("app", {}), r.get("window", {})
+        L = {
+            "title": "Điểm yếu đối thủ → cơ hội" if vi else "Competitor weaknesses → opportunities",
+            "period": "Khoảng" if vi else "Window", "rivals": "Đối thủ" if vi else "Rivals",
+            "opps": "🎯 Cơ hội (ưu tiên)" if vi else "🎯 Opportunities (prioritised)",
+            "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary",
+            "neg": "tiêu cực" if vi else "neg",
+        }
+        cat = app.get("category")
+        head = f"{app.get('name', '?')}" + (f" · {cat}" if cat else f" ({app.get('store', '')})")
+        lines = [f"## 🎯 {L['title']} — {head}", ""]
+        lines.append(f"**{L['period']}:** {w.get('from')} → {w.get('to')}")
+        rivals = r.get("competitors", [])
+        if rivals:
+            lines.append(
+                f"**{L['rivals']}:** "
+                + " · ".join(f"{c['name']} ({c.get('negative_reviews', 0)} {L['neg']})" for c in rivals)
+            )
+        opps = r.get("opportunities", [])
+        if opps:
+            lines += ["", f"### {L['opps']}"]
+            for i, o in enumerate(opps, 1):
+                cat_tag = f" _{o.get('category')}_" if o.get("category") else ""
+                lines.append(f"{i}. **{o.get('theme', '?')}**{cat_tag} ({o.get('count', 0)}) — {o.get('opportunity') or ''}")
+                aff = o.get("competitors") or []
+                if aff:
+                    lines.append(f"   ↳ {', '.join(aff)}")
+                for ex in o.get("examples", [])[:2]:
+                    lines.append(f"   - _{ex}_")
         if r.get("notes"):
             lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
         if r.get("summary"):

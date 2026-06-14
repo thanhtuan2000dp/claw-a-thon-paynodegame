@@ -28,6 +28,7 @@ PREFERENCE: dict[str, list[str]] = {
     "reviews": ["sensortower", "appstore_reviews", "googleplay"],
     "downloads": ["sensortower"],
     "ranking": ["sensortower", "ios_charts"],
+    "category": ["ios_charts"],  # competitor discovery by genre (iOS-only, free)
     "metadata": ["itunes", "googleplay", "sensortower"],
     "search": ["itunes", "googleplay", "sensortower"],
 }

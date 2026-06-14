@@ -196,16 +196,17 @@ class SensorTowerConnector(AppDataConnector):
 
     # --- ranking ---
     def get_ranking(
-        self, app_id: str, store: str, category: str, date: datetime
+        self, app_id: str, store: str, category: str, date: datetime,
+        country: Optional[str] = None, lang: Optional[str] = None,
     ) -> RankPoint:
-        data = self._get(
-            f"/v1/{self._os(store)}/ranking",
-            {
-                "app_id": app_id,
-                "category": category,
-                "date": date.strftime("%Y-%m-%d"),
-            },
-        )
+        params = {
+            "app_id": app_id,
+            "category": category,
+            "date": date.strftime("%Y-%m-%d"),
+        }
+        if country:
+            params["country"] = country
+        data = self._get(f"/v1/{self._os(store)}/ranking", params)
         rank = None
         if isinstance(data, dict):
             rank = data.get("rank") or data.get("ranking")

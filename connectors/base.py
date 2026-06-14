@@ -25,6 +25,7 @@ CAP_METADATA = "metadata"
 CAP_REVIEWS = "reviews"
 CAP_DOWNLOADS = "downloads"
 CAP_RANKING = "ranking"
+CAP_CATEGORY = "category"  # list the apps in a store category/genre (competitor discovery)
 
 
 class NotSupported(Exception):
@@ -61,6 +62,7 @@ class AppMetadata:
     publisher: Optional[str] = None
     # Store-listing fields (sheet UC1 — populated best-effort from the raw payload).
     category: Optional[str] = None
+    genre_id: Optional[str] = None  # store genre id (iOS: primaryGenreId) for category rank
     price: Optional[str] = None
     icon_url: Optional[str] = None
     screenshot_urls: list[str] = field(default_factory=list)
@@ -150,6 +152,15 @@ class AppDataConnector(ABC):
         raise NotSupported(f"{self.name} does not support downloads")
 
     def get_ranking(
-        self, app_id: str, store: Store, category: str, date: datetime
+        self, app_id: str, store: Store, category: str, date: datetime,
+        country: Optional[str] = None, lang: Optional[str] = None,
     ) -> RankPoint:
         raise NotSupported(f"{self.name} does not support ranking")
+
+    def category_apps(
+        self, genre_id: str, store: Store, country: Optional[str] = None,
+        lang: Optional[str] = None, limit: int = 25,
+    ) -> list[AppRef]:
+        """Apps currently in a store category/genre, rank-ordered — for discovering
+        an app's same-category competitors."""
+        raise NotSupported(f"{self.name} does not support category listing")
