@@ -37,9 +37,10 @@ def _names_match(a: str, b: str) -> bool:
 class StoreMetadataUseCase(UseCase):
     name = "uc1_store_metadata"
     description = (
-        "Crawl and normalise an app's store metadata (title, category, price, icon, "
-        "screenshots, description, version, overall rating) plus current chart rank, "
-        "and report what changed since the last snapshot."
+        "Current store listing + chart rank for an app — category, price, version, icon, "
+        "screenshots, overall rating — plus what changed since the last snapshot. Answers "
+        "'app info / rank / price / category'. Static listing facts; NOT reviews, sentiment, "
+        "or causal analysis."
     )
     input_schema = {
         "app": "app name to search, or a store id (iOS trackId / Android package)",

@@ -82,9 +82,12 @@ def _looks_like_id(app: str, store: str) -> bool:
 class HypothesisCheckUseCase(UseCase):
     name = "hypothesis_check"
     description = (
-        "Diagnostic check of an informal product claim (e.g. 'feature X raised "
-        "revenue in build Z'): tests it against data and returns a verdict with "
-        "evidence for/against and caveats. Multi-turn — asks for missing context."
+        "Test a CAUSAL claim / hypothesis — when the user proposes or suspects a CAUSE "
+        "for a metric or outcome ('rating giảm do bản cập nhật', 'feature X raised revenue', "
+        "'X gây Y', or a tag-question guessing a cause like '… à?'/'… đúng không?'). Gathers "
+        "evidence for and against and returns a verdict with confidence. Multi-turn — asks "
+        "for missing context. NOT for a plain data lookup or 'what do users say' (that is "
+        "uc2_reviews_sentiment) or 'how did the latest update do' (that is uc6_version_impact)."
     )
     input_schema = {
         "statement": "the informal claim to test (first turn)",
@@ -153,7 +156,7 @@ class HypothesisCheckUseCase(UseCase):
             '    "direction": "increase|decrease",\n'
             '    "cause": "the feature/change hypothesised to drive it",\n'
             '    "build": "version string or \'latest\'",\n'
-            '    "store": "ios|android",\n'
+            '    "store": "ios",\n'
             '    "timeframe_days": 30,\n'
             '    "baseline": "prior_window"\n'
             "  },\n"
@@ -162,7 +165,9 @@ class HypothesisCheckUseCase(UseCase):
             "}\n\n"
             f"REQUIRED slots: {REQUIRED_SLOTS}. timeframe_days defaults to 30 and baseline to "
             "'prior_window' (these are NOT missing if absent). If the user said 'mới nhất'/'latest' "
-            "for build, treat build as 'latest' (not missing). Infer metric from the wording.\n\n"
+            "for build, treat build as 'latest' (not missing). Infer metric from the wording. "
+            "'store' is one of 'ios', 'android', or 'both' — use 'both' when the user clearly "
+            "wants both platforms; never output combined forms like 'ios|android'.\n\n"
             f"Conversation:\n{convo}"
         )
         try:
@@ -174,7 +179,17 @@ class HypothesisCheckUseCase(UseCase):
 
     # ------------------------------------------------------------------
     def _analyze(self, claim: dict, deps, lang: str = "en") -> dict:
-        store = (claim.get("store") or deps.config.get("default_store", "ios")).lower()
+        # hypothesis_check analyses ONE build on ONE store. Normalise whatever the
+        # parser produced ("both", "ios|android", empty, garbage) into the store(s)
+        # to try, best-first, and resolve on the first where the app exists.
+        raw_store = (claim.get("store") or deps.config.get("default_store", "ios")).lower()
+        if raw_store in ("both", "all", "cross", "cross_platform") or (
+            "ios" in raw_store and "android" in raw_store
+        ):
+            candidates = ["ios", "android"]
+        else:
+            candidates = [s for s in ("ios", "android") if s in raw_store] or ["ios"]
+        store = candidates[0]
         country, _ = market_for(lang)
         metric = (claim.get("metric") or "rating").lower()
         notes: list[str] = []
@@ -192,9 +207,20 @@ class HypothesisCheckUseCase(UseCase):
                 "app": {"name": claim.get("entity"), "store": store},
             }
 
-        app_ref = self._resolve(claim.get("entity") or "", store, deps, country, lang)
+        app_ref = None
+        for s in candidates:
+            app_ref = self._resolve(claim.get("entity") or "", s, deps, country, lang)
+            if app_ref and app_ref.app_id:
+                store = s
+                break
         if app_ref is None or not app_ref.app_id:
-            return _cannot(f"Could not resolve app '{claim.get('entity')}' on {store}.")
+            return _cannot(f"Could not resolve app '{claim.get('entity')}' on {'/'.join(candidates)}.")
+        if len(candidates) > 1:
+            notes.append(
+                f"Tested on {store} (one store per run); ask again for the other store to compare."
+                if lang == "en" else
+                f"Kiểm chứng trên {store} (mỗi lần một store); hỏi lại cho store còn lại để so sánh."
+            )
 
         meta_conn = deps.connector_for(CAP_METADATA, store)
         try:

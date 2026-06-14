@@ -43,8 +43,10 @@ def _pct(count: int, total: int) -> float:
 class ReviewsSentimentUseCase(UseCase):
     name = "uc2_reviews_sentiment"
     description = (
-        "Crawl reviews over a time window and report volume, star distribution, "
-        "language mix, sentiment, weekly trend, and clustered praise/complaint themes."
+        "Describe/measure user reviews over a time window — volume, star distribution, "
+        "language mix, sentiment, weekly trend, and praise/complaint theme clusters. "
+        "Answers 'what are users saying / how is sentiment'. Reports WHAT users say; does "
+        "NOT test a cause-effect hypothesis (use hypothesis_check for 'X is due to Y')."
     )
     input_schema = {
         "app": "app name to search, or a store id (iOS trackId / Android package)",
