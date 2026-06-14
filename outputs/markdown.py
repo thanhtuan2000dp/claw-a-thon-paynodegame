@@ -70,6 +70,12 @@ class MarkdownOutput(OutputChannel):
             return self._render_uc8(result)
         if uc == "uc10_insight_qa":
             return self._render_uc10(result)
+        if uc == "uc4_kpi_dashboard":
+            return self._render_cross(result, self._render_uc4_single, "📈", "KPI dashboard", "Bảng KPI") \
+                if result.get("mode") == "cross_platform" else self._render_uc4_single(result)
+        if uc == "uc9_trend_alert":
+            return self._render_cross(result, self._render_uc9_single, "🚨", "Trend alerts", "Cảnh báo biến động") \
+                if result.get("mode") == "cross_platform" else self._render_uc9_single(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
 
@@ -321,6 +327,64 @@ class MarkdownOutput(OutputChannel):
             real = [n for n in r["notes"] if n]
             if real:
                 lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
+        return "\n".join(lines)
+
+    # ---- sheet UC4: KPI dashboard ----
+    def _render_uc4_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, k, d = r.get("app", {}), r.get("kpis", {}), r.get("deltas", {})
+        L = {"title": "Bảng KPI" if vi else "KPI dashboard", "n": "Lượt rating" if vi else "Ratings",
+             "since": "từ" if vi else "since", "date": "Ngày" if vi else "Date",
+             "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary"}
+        cnt = k.get("ratings_count")
+        cnt_s = f"{cnt:,}" if isinstance(cnt, int) else "n/a"
+        lines = [f"## 📈 {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(f"**Rating:** {_fmt(k.get('rating'))} · **Rank:** {k.get('rank_chart') or '?'} "
+                     f"#{k.get('rank') or 'n/a'} · **{L['n']}:** {cnt_s} · **Version:** `{k.get('version') or '?'}`")
+        if d.get("since"):
+            bits = []
+            if d.get("rating") is not None:
+                bits.append(f"rating {_signed(d['rating'], 3)}")
+            if d.get("rank") is not None:
+                bits.append(f"rank {d['rank']:+d}")
+            if isinstance(d.get("ratings_count"), int):
+                bits.append(f"{d['ratings_count']:+,} ratings")
+            if bits:
+                lines.append(f"**Δ {L['since']} {d['since']}:** " + ", ".join(bits))
+        trend = r.get("trend", [])
+        if len(trend) > 1:
+            lines += ["", f"| {L['date']} | Rating | Rank | {L['n']} |", "|---|---|---|---|"]
+            for row in trend[-8:]:
+                rc = row.get("ratings_count")
+                lines.append(f"| {row['date']} | {_fmt(row.get('rating'))} | {row.get('rank') or 'n/a'} | "
+                             f"{rc:,} |" if isinstance(rc, int) else
+                             f"| {row['date']} | {_fmt(row.get('rating'))} | {row.get('rank') or 'n/a'} | n/a |")
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC9: trend & anomaly alert ----
+    def _render_uc9_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, cur = r.get("app", {}), r.get("current", {})
+        L = {"title": "Cảnh báo biến động" if vi else "Trend alerts",
+             "now": "Hiện tại" if vi else "Now", "alerts": "🚨 Cảnh báo" if vi else "🚨 Alerts",
+             "since": "từ" if vi else "since"}
+        lines = [f"## 🚨 {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(f"**{L['now']}:** rating {_fmt(cur.get('rating'))} · "
+                     f"rank {cur.get('rank_chart') or '?'} #{cur.get('rank') or 'n/a'} · v`{cur.get('version') or '?'}`")
+        if r.get("status") == "baseline_seeded":
+            lines += ["", f"_{r.get('summary', '')}_"]
+            return "\n".join(lines)
+        alerts = r.get("alerts", [])
+        icon = {"high": "🔴", "medium": "🟡", "info": "🔵"}
+        if alerts:
+            lines += ["", f"### {L['alerts']} ({L['since']} {r.get('baseline_date')})"]
+            lines += [f"- {icon.get(a.get('severity'), '•')} {a.get('message')}" for a in alerts]
+        else:
+            lines += ["", f"✅ {r.get('summary', '')}"]
         return "\n".join(lines)
 
     # ---- sheet UC7: competitive comparison ----
