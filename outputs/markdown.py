@@ -64,6 +64,8 @@ class MarkdownOutput(OutputChannel):
         if uc == "uc2_reviews_sentiment":
             return self._render_cross(result, self._render_reviews_single, "💬", "Reviews & sentiment", "Review & sentiment") \
                 if result.get("mode") == "cross_platform" else self._render_reviews_single(result)
+        if uc == "uc8_competitor_weakness":
+            return self._render_uc8(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
 
@@ -283,6 +285,44 @@ class MarkdownOutput(OutputChannel):
                     lines.append(f"- **{it.get('theme', '?')}** ({it.get('count', 0)})")
                     for ex in it.get("examples", [])[:2]:
                         lines.append(f"  - _{ex}_")
+        if r.get("notes"):
+            lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC8: competitor weakness mining ----
+    def _render_uc8(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app, w = r.get("app", {}), r.get("window", {})
+        L = {
+            "title": "Điểm yếu đối thủ → cơ hội" if vi else "Competitor weaknesses → opportunities",
+            "period": "Khoảng" if vi else "Window", "rivals": "Đối thủ" if vi else "Rivals",
+            "opps": "🎯 Cơ hội (ưu tiên)" if vi else "🎯 Opportunities (prioritised)",
+            "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary",
+            "neg": "tiêu cực" if vi else "neg",
+        }
+        cat = app.get("category")
+        head = f"{app.get('name', '?')}" + (f" · {cat}" if cat else f" ({app.get('store', '')})")
+        lines = [f"## 🎯 {L['title']} — {head}", ""]
+        lines.append(f"**{L['period']}:** {w.get('from')} → {w.get('to')}")
+        rivals = r.get("competitors", [])
+        if rivals:
+            lines.append(
+                f"**{L['rivals']}:** "
+                + " · ".join(f"{c['name']} ({c.get('negative_reviews', 0)} {L['neg']})" for c in rivals)
+            )
+        opps = r.get("opportunities", [])
+        if opps:
+            lines += ["", f"### {L['opps']}"]
+            for i, o in enumerate(opps, 1):
+                cat_tag = f" _{o.get('category')}_" if o.get("category") else ""
+                lines.append(f"{i}. **{o.get('theme', '?')}**{cat_tag} ({o.get('count', 0)}) — {o.get('opportunity') or ''}")
+                aff = o.get("competitors") or []
+                if aff:
+                    lines.append(f"   ↳ {', '.join(aff)}")
+                for ex in o.get("examples", [])[:2]:
+                    lines.append(f"   - _{ex}_")
         if r.get("notes"):
             lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
         if r.get("summary"):

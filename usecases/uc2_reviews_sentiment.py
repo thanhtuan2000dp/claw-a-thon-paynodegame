@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from connectors.base import CAP_METADATA, CAP_REVIEWS, ConnectorError, Review
-from core.lang import detect_lang, market_for
+from core.lang import detect_lang, lang_name, market_for
 from usecases.base import UseCase, resolve_app
 
 # Bounded sample sizes for the single LLM theme-clustering call. Kept small so the
@@ -253,7 +253,9 @@ class ReviewsSentimentUseCase(UseCase):
             "Return ONLY JSON: {\"praise\": [...], \"complaints\": [...]} where each item is "
             '{"theme": str, "count": int, "examples": [up to 2 short verbatim quotes]}, '
             "sorted by count descending, top 5 each. 'praise' = what users like; "
-            "'complaints' = bugs / issues / dislikes. Keep quotes in their original language.\n\n"
+            "'complaints' = bugs / issues / dislikes. "
+            f"Write each 'theme' label in {lang_name(lang)}; keep example quotes verbatim in their "
+            "original language.\n\n"
             f"POSITIVE REVIEWS (4-5★):\n{fmt(pos) or '(none)'}\n\n"
             f"NEGATIVE/NEUTRAL REVIEWS (1-3★):\n{fmt(neg) or '(none)'}"
         )

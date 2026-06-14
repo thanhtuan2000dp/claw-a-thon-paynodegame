@@ -25,6 +25,7 @@ CAP_METADATA = "metadata"
 CAP_REVIEWS = "reviews"
 CAP_DOWNLOADS = "downloads"
 CAP_RANKING = "ranking"
+CAP_CATEGORY = "category"  # list the apps in a store category/genre (competitor discovery)
 
 
 class NotSupported(Exception):
@@ -155,3 +156,11 @@ class AppDataConnector(ABC):
         country: Optional[str] = None, lang: Optional[str] = None,
     ) -> RankPoint:
         raise NotSupported(f"{self.name} does not support ranking")
+
+    def category_apps(
+        self, genre_id: str, store: Store, country: Optional[str] = None,
+        lang: Optional[str] = None, limit: int = 25,
+    ) -> list[AppRef]:
+        """Apps currently in a store category/genre, rank-ordered — for discovering
+        an app's same-category competitors."""
+        raise NotSupported(f"{self.name} does not support category listing")

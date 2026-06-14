@@ -25,7 +25,7 @@ from typing import Optional
 
 import httpx
 
-from .base import CAP_RANKING, AppDataConnector, ConnectorError, RankPoint
+from .base import CAP_CATEGORY, CAP_RANKING, AppDataConnector, AppRef, ConnectorError, RankPoint
 
 BASE_URL = "https://rss.marketingtools.apple.com/api/v2"
 
@@ -53,7 +53,16 @@ class IosChartsConnector(AppDataConnector):
         self.timeout = timeout
 
     def capabilities(self) -> set[str]:
-        return {CAP_RANKING}
+        return {CAP_RANKING, CAP_CATEGORY}
+
+    def category_apps(self, genre_id, store="ios", country=None, lang=None, limit=25) -> list[AppRef]:
+        """Same-category competitors: the genre top-free chart, rank-ordered."""
+        results = self._fetch_genre_chart(str(genre_id), country or self.country)
+        refs: list[AppRef] = []
+        for a in results[:limit]:
+            if a.get("id"):
+                refs.append(AppRef(app_id=str(a["id"]), name=a.get("name") or "", store="ios"))
+        return refs
 
     def _feed_for(self, category: Optional[str]) -> str:
         if not category:
