@@ -167,7 +167,7 @@ class CompetitorWeaknessUseCase(UseCase):
         blocks = []
         for c in comp_data:
             if c.get("sample"):
-                lines = "\n".join(f"  - ({r.rating}★) {r.content[:120]}" for r in c["sample"])
+                lines = "\n".join(f"  - ({r.rating}★) {r.content[:240]}" for r in c["sample"])
                 blocks.append(f"[{c['name']}] ({c['neg_count']} negative reviews)\n{lines}")
         if not blocks:
             notes.append("No negative competitor reviews found in the window — nothing to mine.")
@@ -179,7 +179,8 @@ class CompetitorWeaknessUseCase(UseCase):
             '{"theme": str, "category": "bug|missing_feature|monetization|ux|performance|support|other", '
             '"count": int (reviews mentioning it), "competitors": [affected app names], '
             '"opportunity": "one line on how our app can win here", '
-            '"examples": [up to 2 verbatim quotes]}, sorted by count descending, top 6. '
+            '"examples": [up to 2 verbatim quotes, each a COMPLETE phrase — never cut mid-word]}, '
+            "sorted by count descending, top 6. "
             f"Write the 'theme' and 'opportunity' text in {lang_name(lang)} (keep 'category' as the "
             "English enum value). Keep example quotes verbatim in their original language.\n\n"
             + "\n\n".join(blocks)

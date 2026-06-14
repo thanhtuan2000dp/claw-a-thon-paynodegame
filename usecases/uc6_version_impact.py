@@ -367,12 +367,12 @@ class VersionImpactUseCase(UseCase):
         if not negatives:
             return []
         sample = negatives[:20]
-        joined = "\n".join(f"- ({r.rating}★) {r.content[:120]}" for r in sample)
+        joined = "\n".join(f"- ({r.rating}★) {r.content[:200]}" for r in sample)
         prompt = (
             "You are a product analyst. Categorise these post-release negative app "
             f"reviews into these categories: {', '.join(ISSUE_CATEGORIES)}.\n"
             "Return ONLY JSON: a list of objects "
-            '{"category": str, "count": int, "examples": [up to 2 short quote strings]}, '
+            '{"category": str, "count": int, "examples": [up to 2 quote strings, each a COMPLETE phrase — never cut mid-word]}, '
             "sorted by count descending, top 5 only. Keep example quotes verbatim in their "
             "original language.\n\n"
             f"Reviews:\n{joined}"

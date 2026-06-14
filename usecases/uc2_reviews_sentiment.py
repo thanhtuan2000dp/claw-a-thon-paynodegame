@@ -246,12 +246,12 @@ class ReviewsSentimentUseCase(UseCase):
             return {"praise": [], "complaints": []}
 
         def fmt(rs):
-            return "\n".join(f"- ({r.rating}★) {r.content[:100]}" for r in rs[:_SAMPLE_PER_POLARITY])
+            return "\n".join(f"- ({r.rating}★) {r.content[:200]}" for r in rs[:_SAMPLE_PER_POLARITY])
 
         prompt = (
             "You are a product analyst. Cluster these app reviews into themes.\n"
             "Return ONLY JSON: {\"praise\": [...], \"complaints\": [...]} where each item is "
-            '{"theme": str, "count": int, "examples": [up to 2 short verbatim quotes]}, '
+            '{"theme": str, "count": int, "examples": [up to 2 verbatim quotes, each a COMPLETE phrase — never cut mid-word]}, '
             "sorted by count descending, top 5 each. 'praise' = what users like; "
             "'complaints' = bugs / issues / dislikes. "
             f"Write each 'theme' label in {lang_name(lang)}; keep example quotes verbatim in their "
