@@ -86,8 +86,10 @@ def _neg_share(reviews: list[Review]) -> Optional[float]:
 class VersionImpactUseCase(UseCase):
     name = "uc6_version_impact"
     description = (
-        "Post-release health check for any app: rating movement, review velocity, "
-        "and newly surfaced complaints around the latest update."
+        "Post-release health check around an app's LATEST update — compares rating, "
+        "review velocity, and negative-share BEFORE vs AFTER the release date and surfaces "
+        "new complaints. Answers 'is the new build healthy / how did the update do'. Does "
+        "NOT test a specific causal claim (use hypothesis_check for 'X changed because Y')."
     )
     input_schema = {
         "app": "app name to search, or a store id (iOS trackId / Android package)",

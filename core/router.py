@@ -42,8 +42,10 @@ _STOPWORDS = {
     # time-window words — "1 tháng gần đây", "tuần qua", "tháng này", "last month", ...
     # (standalone digits are dropped separately, so "1 tháng" leaves nothing behind)
     "tháng", "tuần", "ngày", "năm", "qua", "vừa", "rồi", "này", "nay", "hôm", "trong",
-    "khoảng", "dạo", "month", "months", "week", "weeks", "day", "days", "year", "years",
+    "khoảng", "dạo", "trở", "lại", "month", "months", "week", "weeks", "day", "days", "year", "years",
     "last", "past", "recent", "recently", "this",
+    # connective / filler words ("đánh giá VỀ X", "đối với X")
+    "về", "đối", "với",
     # intent words (so review/metadata keywords don't leak into the app name)
     "metadata", "sentiment", "feedback", "comment", "comments", "info", "rank", "ranking",
     "category", "screenshot", "screenshots", "icon", "description", "store", "play",
@@ -67,10 +69,32 @@ def _detect_store(low: str):
     return None
 
 
+# Duration phrases -> analysis window in days (used by UC2 / UC6). E.g. "1 năm", "6 tháng".
+_UNIT_DAYS = {"năm": 365, "year": 365, "years": 365, "tháng": 30, "month": 30, "months": 30,
+              "tuần": 7, "week": 7, "weeks": 7, "ngày": 1, "day": 1, "days": 1}
+_WINDOW_RE = re.compile(r"(\d+)\s*(năm|years?|tháng|months?|tuần|weeks?|ngày|days?)")
+
+
+def _parse_window_days(low: str):
+    """Pull an analysis window (in days) out of a duration phrase, else None.
+    "1 năm trở lại đây" -> 365, "6 tháng" -> 180, "2 tuần" -> 14."""
+    m = _WINDOW_RE.search(low)
+    if m:
+        return max(1, min(int(m.group(1)) * _UNIT_DAYS[m.group(2)], 3650))  # cap ~10y
+    if "năm qua" in low or "năm nay" in low:
+        return 365
+    if "tháng qua" in low or "tháng này" in low:
+        return 30
+    if "tuần qua" in low or "tuần này" in low:
+        return 7
+    return None
+
+
 def _heuristic_route(message: str):
-    """Route + extract params WITHOUT an LLM call for common phrasings, so the slow
-    MaaS routing call is off the critical path. Returns (action, params) or None
-    (None -> fall back to LLM routing)."""
+    """FALLBACK ONLY (used when the LLM router is unavailable). Keyword/stopword
+    routing — intent words pick the action, command/time/platform words are stripped
+    to guess the app name, durations -> window_days. Brittle by nature; the LLM path
+    (Router._route_nl) is the primary router. Returns (action, params) or None."""
     low = message.lower()
     if any(m in low for m in _HYPO_MARKERS):
         return ("hypothesis_check", {"statement": message})
@@ -82,13 +106,17 @@ def _heuristic_route(message: str):
         action = "uc1_store_metadata"
     else:
         action = "uc6_version_impact"
-    # A platform mention narrows the store (and is stripped from the app name below).
+    # A platform mention narrows the store; a duration phrase sets the window
+    # (both are also stripped from the app name below).
     store = _detect_store(low)
+    window_days = _parse_window_days(low)
 
     def params(app: str) -> dict:
         p = {"app": app}
         if store:
             p["store"] = store
+        if window_days:
+            p["window_days"] = window_days
         return p
 
     # Explicit store id: Android package (com.x.y) or iOS trackId (long digits).
@@ -111,6 +139,10 @@ class Router:
     def __init__(self, deps):
         self.deps = deps
         self.use_cases = {name: cls() for name, cls in discover_use_cases().items()}
+        # session_id -> {app, store, use_case}: cross-turn context so a follow-up that
+        # omits the app ("tôi đoán điều này do lỗi gần đây") reuses the last one.
+        # In-memory (per server process) — for durable/multi-instance, back with Memory.
+        self._recent: dict[str, dict] = {}
 
     def catalog(self) -> list[dict]:
         return [
@@ -124,11 +156,15 @@ class Router:
         action = payload.get("action")
         params = dict(payload.get("params", {}))
         message = payload.get("message")
+        session_id = getattr(context, "session_id", None) or payload.get("session_id") or "default"
 
         if not action and message:
-            # Heuristic first (no LLM, instant); fall back to LLM routing only if it can't decide.
-            action, extracted = _heuristic_route(message) or self._route_nl(message)
-            # explicit params win over heuristic/LLM-extracted ones
+            # LLM-first: the model picks the action and extracts params (app, store,
+            # window, dates), using recent session context to resolve follow-ups that
+            # omit the app or refer back ("điều này", "nó"). Falls back to the keyword
+            # heuristic only when the LLM is unavailable.
+            action, extracted = self._route_nl(message, self._recent.get(session_id))
+            # explicit params win over extracted ones
             params = {**extracted, **params}
 
         # Auto-detect response language from the user's own words (full message is
@@ -150,30 +186,87 @@ class Router:
                 "error": f"Unknown action '{action}'.",
                 "available_actions": self.catalog(),
             }
-        return uc.run(params, self.deps, context)
+        result = uc.run(params, self.deps, context)
+        self._remember(session_id, action, result)
+        return result
 
-    def _route_nl(self, message: str) -> tuple[str | None, dict]:
+    def _remember(self, session_id: str, action: str | None, result: dict) -> None:
+        """Stash the resolved app/store after a successful turn so a later follow-up
+        that omits them can reuse them via _route_nl. A need-context / errored turn
+        leaves the prior context intact (no useful app to remember)."""
+        if not session_id or not isinstance(result, dict) or result.get("error"):
+            return
+        if result.get("mode") == "cross_platform":
+            name = None
+            for p in result.get("platforms", {}).values():
+                if isinstance(p, dict) and not p.get("error"):
+                    name = (p.get("app") or {}).get("name") or name
+            app, store = name or result.get("app_query"), "both"
+        else:
+            app = (result.get("app") or {}).get("name")
+            store = (result.get("app") or {}).get("store")
+        if app:
+            self._recent[session_id] = {
+                "app": app, "store": store, "use_case": result.get("use_case") or action,
+            }
+
+    def _route_nl(self, message: str, recent: dict | None = None) -> tuple[str | None, dict]:
+        """Primary NL router: the LLM picks the action and extracts params from the
+        action catalog. Robust to phrasing/language/time-expressions (no keyword
+        lists). ``recent`` carries the prior turn's {app, store, use_case} so a
+        follow-up that omits the app resolves against it. Falls back to the keyword
+        heuristic only if the LLM is unavailable (MaaS down/slow or unparseable
+        output), so routing still degrades gracefully."""
         names = list(self.use_cases)
         if not names:
             return None, {}
-        catalog_lines = "\n".join(
-            f'- {uc.name}: {uc.description} params={list(uc.input_schema)}'
-            for uc in self.use_cases.values()
-        )
+        catalog_lines = "\n".join(f"- {uc.name}: {uc.description}" for uc in self.use_cases.values())
+        context_block = ""
+        if recent and recent.get("app"):
+            context_block = (
+                "Recent conversation context — use it to resolve a follow-up that omits "
+                "the app/platform or refers back (\"điều này\", \"nó\", \"app đó\", \"this\", \"vậy\"): "
+                f"app={recent['app']}, store={recent.get('store') or 'both'}, "
+                f"last analysis={recent.get('use_case')}. Reuse this app AND store/platform "
+                "UNLESS the new message clearly names a different one. If it is a hypothesis, "
+                "rewrite params.statement to be self-contained — naming this app, the platform "
+                "(iOS/Android per store above), and the metric in context (e.g. reviews/rating).\n\n"
+            )
         prompt = (
-            "Pick the best action for the user's message and extract parameters.\n"
+            "You route a user's message to ONE app-analytics action and extract its parameters.\n"
+            "Choose the action whose description best matches the user's intent — the "
+            "descriptions say what each action is and is NOT for.\n"
             f"Actions:\n{catalog_lines}\n\n"
+            + context_block
+            + "Extract into params (omit a key if absent):\n"
+            "- app: the app name, OR a store id copied VERBATIM (Android package e.g. "
+            "com.zing.zalo, or iOS numeric trackId). Drop filler words ('ứng dụng', 'về', "
+            "'phân tích', 'app'). NEVER invent or guess an app — use ONLY an app explicitly "
+            "named in the message or in the recent context above; if there is none, OMIT app.\n"
+            '- store: "ios", "android", or "both" (default "both" if no platform is named).\n'
+            '- window_days: integer days from any time phrase — "1 năm"/"1 year"=365, '
+            '"6 tháng"=180, "2 tuần"=14, "tháng này"/"last month"=30.\n'
+            "- date_from / date_to: ISO dates ONLY if the user gives explicit calendar dates.\n"
+            "- country: 2-letter code only if explicitly mentioned.\n"
+            "- statement: for hypothesis_check, the full context-resolved claim text.\n\n"
             f'User message: "{message}"\n\n'
-            'Return ONLY JSON: {"action": "<one of the action names>", "params": {...}}. '
-            "Extract any app name, store (ios/android), country, or window into params."
+            'Return ONLY JSON: {"action": "<one of the action names>", "params": {...}}.'
         )
         try:
             data = self.deps.llm.complete_json(prompt)
-        except Exception:  # noqa: BLE001 - if routing LLM fails, fall back
-            # Single-use-case default; otherwise leave unresolved.
-            return (names[0] if len(names) == 1 else None), {"app": message}
-        action = data.get("action") if isinstance(data, dict) else None
-        params = data.get("params", {}) if isinstance(data, dict) else {}
-        if action not in self.use_cases:
-            action = names[0] if len(names) == 1 else None
-        return action, params if isinstance(params, dict) else {}
+            action = data.get("action") if isinstance(data, dict) else None
+            params = data.get("params", {}) if isinstance(data, dict) else {}
+            if not isinstance(params, dict):
+                params = {}
+            if action in self.use_cases:
+                # Reliability: if the message literally contains a store id, trust the
+                # verbatim regex over the model's copy (LLMs can mangle long ids).
+                low = message.lower()
+                idm = re.search(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}", low) or re.search(r"\b\d{6,}\b", low)
+                if idm:
+                    params["app"] = idm.group(0)
+                return action, params
+        except Exception:  # noqa: BLE001 - MaaS down/slow or bad JSON -> heuristic fallback
+            pass
+        # Fallback (LLM unavailable): keyword heuristic, else unresolved.
+        return _heuristic_route(message) or ((names[0] if len(names) == 1 else None), {"app": message})
