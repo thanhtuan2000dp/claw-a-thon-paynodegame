@@ -64,6 +64,8 @@ class MarkdownOutput(OutputChannel):
         if uc == "uc2_reviews_sentiment":
             return self._render_cross(result, self._render_reviews_single, "💬", "Reviews & sentiment", "Review & sentiment") \
                 if result.get("mode") == "cross_platform" else self._render_reviews_single(result)
+        if uc == "uc7_competitive_comparison":
+            return self._render_uc7(result)
         if uc == "uc8_competitor_weakness":
             return self._render_uc8(result)
         # Generic fallback for other use cases.
@@ -287,6 +289,45 @@ class MarkdownOutput(OutputChannel):
                         lines.append(f"  - _{ex}_")
         if r.get("notes"):
             lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in r["notes"]]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
+        return "\n".join(lines)
+
+    # ---- sheet UC7: competitive comparison ----
+    def _render_uc7(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app = r.get("app", {})
+        L = {
+            "title": "So sánh cạnh tranh" if vi else "Competitive comparison",
+            "appc": "App" if vi else "App", "rank": "Rank", "rating": "Rating",
+            "n": "Lượt rating" if vi else "Ratings", "price": "Giá" if vi else "Price",
+            "leaders": "Dẫn đầu" if vi else "Leaders", "scale": "quy mô" if vi else "scale",
+            "insights": "📊 Định vị" if vi else "📊 Positioning", "notes": "Ghi chú" if vi else "Notes",
+            "summary": "Tóm tắt" if vi else "Summary",
+        }
+        cat = app.get("category")
+        lines = [f"## ⚔️ {L['title']} — {app.get('name', '?')}" + (f" · {cat}" if cat else ""), ""]
+        lines += [f"| {L['appc']} | {L['rank']} | {L['rating']} | {L['n']} | {L['price']} | Version |",
+                  "|---|---|---|---|---|---|"]
+        for row in r.get("comparison", []):
+            mark = "⭐ " if row.get("is_you") else ""
+            cnt = row.get("ratings_count")
+            cnt_s = f"{cnt:,}" if isinstance(cnt, int) else "n/a"
+            lines.append(
+                f"| {mark}{row.get('name', '?')} | {row.get('rank') or 'n/a'} | "
+                f"{_fmt(row.get('rating'))} | {cnt_s} | {row.get('price') or 'n/a'} | "
+                f"{row.get('version') or 'n/a'} |"
+            )
+        ld = r.get("leaders", {})
+        lines += ["", f"**{L['leaders']}:** rating → {ld.get('rating') or 'n/a'} · "
+                  f"rank → {ld.get('rank') or 'n/a'} · {L['scale']} → {ld.get('ratings_count') or 'n/a'}"]
+        pos = r.get("positioning", [])
+        if pos:
+            lines += ["", f"### {L['insights']}"] + [f"- {p}" for p in pos]
+        if r.get("notes"):
+            real = [n for n in r["notes"] if n]
+            if real:
+                lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
         if r.get("summary"):
             lines += ["", f"### {L['summary']}", r["summary"]]
         return "\n".join(lines)
