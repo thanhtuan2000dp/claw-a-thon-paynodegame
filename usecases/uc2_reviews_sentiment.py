@@ -128,15 +128,17 @@ class ReviewsSentimentUseCase(UseCase):
             }
         reviews: list[Review] = []
         review_source = None
+        review_errors: list[str] = []  # only surfaced if ALL sources fail (silent fallback)
         for conn in review_conns:
             try:
                 reviews = conn.get_reviews(app_ref.app_id, store, start, end, country=review_lang, lang=review_lang)
                 review_source = conn.name
                 break
             except ConnectorError as exc:
-                notes.append(f"{conn.name} reviews unavailable ({exc}); trying next source.")
+                review_errors.append(f"{conn.name}: {exc}")
         if review_source is None:
-            return {"use_case": self.name, "error": f"all review sources failed for {store}", "notes": notes}
+            return {"use_case": self.name,
+                    "error": f"all review sources failed for {store} ({'; '.join(review_errors)})"}
 
         # Defensive window clamp (connectors already filter, but be safe).
         in_window = [r for r in reviews if (rd := _naive(r.date)) and start <= rd <= end]

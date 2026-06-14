@@ -239,15 +239,16 @@ class VersionImpactUseCase(UseCase):
         else:
             now = datetime.utcnow()
             start = release_dt - timedelta(days=window_days)
+            review_errors: list[str] = []  # only surfaced if ALL sources fail (silent fallback)
             for conn in review_conns:
                 try:
                     reviews = conn.get_reviews(app_ref.app_id, store, start, now, country=country, lang=lang)
                     review_source = conn.name
                     break
                 except ConnectorError as exc:
-                    notes.append(f"{conn.name} reviews unavailable ({exc}); trying next source.")
+                    review_errors.append(f"{conn.name}: {exc}")
             if review_source is None:
-                notes.append("All review sources failed — metrics-only report.")
+                notes.append(f"All review sources failed ({'; '.join(review_errors)}) — metrics-only report.")
             for r in reviews:
                 rd = _naive(r.date)
                 if rd is None:

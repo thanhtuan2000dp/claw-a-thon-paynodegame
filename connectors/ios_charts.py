@@ -70,12 +70,50 @@ class IosChartsConnector(AppDataConnector):
             raise ConnectorError(f"iOS charts {feed}/{country} failed: {exc}") from exc
         return data.get("feed", {}).get("results", []) or []
 
+    def _fetch_genre_chart(self, genre_id: str, country: str) -> list[dict]:
+        """Top-free chart WITHIN a genre via the old iTunes RSS (the marketingtools v2
+        feed has no genre filter). Returns ordered apps — the app's position is its
+        category rank, and the rest are its same-category competitors. Verified
+        2026-06-14 (vn/6015 Finance). Up to 200 entries."""
+        url = (f"https://itunes.apple.com/{country.lower()}/rss/topfreeapplications/"
+               f"limit=200/genre={genre_id}/json")
+        try:
+            resp = httpx.get(url, timeout=self.timeout, follow_redirects=True)
+            resp.raise_for_status()
+            entries = resp.json().get("feed", {}).get("entry", []) or []
+        except httpx.HTTPError as exc:
+            raise ConnectorError(f"iOS genre chart {genre_id}/{country} failed: {exc}") from exc
+        if isinstance(entries, dict):  # a single-entry feed comes back unwrapped
+            entries = [entries]
+        out = []
+        for e in entries:
+            out.append({
+                "id": (e.get("id", {}).get("attributes", {}) or {}).get("im:id"),
+                "name": (e.get("im:name", {}) or {}).get("label"),
+                "genre": (e.get("category", {}).get("attributes", {}) or {}).get("label"),
+            })
+        return out
+
     def get_ranking(
-        self, app_id: str, store: str, category: str, date: datetime
+        self, app_id: str, store: str, category: str, date: datetime,
+        country: Optional[str] = None, lang: Optional[str] = None,
     ) -> RankPoint:
+        cn = country or self.country  # charts are per-market — use the request's country
+        cat = (category or "").strip()
+        # A numeric category is a genre id -> report the in-CATEGORY rank (more useful
+        # than the overall chart, where mid-size apps fall outside the top 100).
+        if cat.isdigit():
+            results = self._fetch_genre_chart(cat, cn)
+            label = next((a["genre"] for a in results if a.get("genre")), cat)
+            rank: Optional[int] = None
+            for pos, app in enumerate(results, start=1):
+                if str(app.get("id")) == str(app_id):
+                    rank = pos
+                    break
+            return RankPoint(date=date, category=label, rank=rank)
         feed = self._feed_for(category)
-        results = self._fetch_chart(feed, self.country)
-        rank: Optional[int] = None
+        results = self._fetch_chart(feed, cn)
+        rank = None
         for pos, app in enumerate(results, start=1):
             if str(app.get("id")) == str(app_id):
                 rank = pos

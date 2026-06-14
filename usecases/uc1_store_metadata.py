@@ -108,20 +108,35 @@ class StoreMetadataUseCase(UseCase):
         except ConnectorError as exc:
             return {"use_case": self.name, "error": f"metadata fetch failed: {exc}"}
 
-        # Ranking — iOS only via the free top-charts feed; Android has no free source.
+        # Ranking — try capable sources best-first and FALL BACK on error: Sensor Tower
+        # (if its token is scoped) → the free iOS feed (ios_charts). Pass the app's genre id
+        # so ios_charts returns the in-CATEGORY rank (e.g. #1 Finance) via the old iTunes RSS
+        # genre feed — far more useful than the overall chart where mid-size apps fall outside
+        # the top 100. iOS only; Android has no free chart source.
         rank: Optional[int] = None
         rank_chart: Optional[str] = None
-        rank_conn = deps.connector_for(CAP_RANKING, store)
-        if rank_conn is not None:
+        rank_conns = deps.connectors_for(CAP_RANKING, store)
+        rank_key = meta.genre_id or "top-free"
+        ranked = False
+        rank_errors: list[str] = []  # only surfaced if NO source produced a rank (silent fallback)
+        for rc in rank_conns:
             try:
-                rp = rank_conn.get_ranking(meta.app_id, store, "top-free", datetime.utcnow())
+                rp = rc.get_ranking(meta.app_id, store, rank_key, datetime.utcnow(),
+                                    country=country, lang=lang)
                 rank, rank_chart = rp.rank, rp.category
+                ranked = True
+                break
             except ConnectorError as exc:
-                notes.append(f"Ranking unavailable ({exc}).")
-        elif store == "android":
-            notes.append("Android chart rank has no free source — omitted."
-                         if lang == "en" else
-                         "Rank Android không có nguồn free — bỏ qua.")
+                rank_errors.append(f"{rc.name}: {exc}")
+        if not ranked:
+            if not rank_conns and store == "android":
+                notes.append("Android chart rank has no free source — omitted."
+                             if lang == "en" else
+                             "Rank Android không có nguồn free — bỏ qua.")
+            elif rank_errors:
+                notes.append(f"Ranking unavailable ({'; '.join(rank_errors)})."
+                             if lang == "en" else
+                             f"Không lấy được rank ({'; '.join(rank_errors)}).")
 
         release_dt = meta.current_version_release_date
 
