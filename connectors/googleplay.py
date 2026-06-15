@@ -17,6 +17,8 @@ from typing import Optional
 # featured search result's raw data (used to recover the appId the scraper drops).
 _DETAILS_ID_RE = re.compile(r"store/apps/details\?id=([A-Za-z0-9._]+)")
 
+from core.cache import TTL_METADATA, TTL_REVIEWS, TTL_SEARCH, ttl_cache
+
 from .base import (
     CAP_METADATA,
     CAP_REVIEWS,
@@ -58,6 +60,7 @@ class GooglePlayConnector(AppDataConnector):
         except ImportError:
             return False
 
+    @ttl_cache(TTL_SEARCH)
     def search_app(self, term: str, store: str = "android", country=None, lang=None) -> list[AppRef]:
         from google_play_scraper import search
 
@@ -121,6 +124,7 @@ class GooglePlayConnector(AppDataConnector):
         except Exception:  # noqa: BLE001 - best-effort; never break search on a layout change
             return None
 
+    @ttl_cache(TTL_METADATA)
     def get_metadata(self, app_id: str, store: str = "android", country=None, lang=None) -> AppMetadata:
         from google_play_scraper import app as gp_app
 
@@ -151,6 +155,7 @@ class GooglePlayConnector(AppDataConnector):
             raw={},
         )
 
+    @ttl_cache(TTL_REVIEWS)
     def get_reviews(
         self, app_id: str, store: str, start_date: datetime, end_date: datetime, country=None, lang=None
     ) -> list[Review]:

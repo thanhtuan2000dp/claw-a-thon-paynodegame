@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from connectors.base import CAP_CATEGORY, CAP_METADATA, CAP_REVIEWS, ConnectorError, Review
+from connectors.base import CAP_CATEGORY, CAP_METADATA, CAP_REVIEWS, ConnectorError
 from core.lang import detect_lang, lang_name, market_for
 from usecases.base import UseCase, resolve_app
 
@@ -154,7 +154,7 @@ class CompetitorWeaknessUseCase(UseCase):
             return {"use_case": self.name, "error": (
                 f"no free competitor discovery for {store} — pass a 'competitors' list"
                 if store == "android" else
-                f"could not determine category for the app — pass a 'competitors' list")}
+                "could not determine category for the app — pass a 'competitors' list")}
         try:
             refs = cat_conn.category_apps(genre_id, store, country=country, lang=review_lang, limit=top_n + 6)
         except ConnectorError as exc:

@@ -1,16 +1,22 @@
 """Snapshot store — append-only daily metric snapshots per app.
 
 Lets the agent build its own time series (rating/version over time) for apps it
-has seen before. Backed by one JSON-lines file per app under ``base_dir``.
+has seen before. ``SnapshotStore`` keeps one JSON-lines file per app under
+``base_dir``.
 
-Container storage is ephemeral (snapshots reset on redeploy); for durable history
-back this with AgentBase Memory or an external store. Fine for the demo.
+Durability: the default file backend is durable *as long as ``base_dir`` is
+durable*. Container root disk is ephemeral (snapshots reset on redeploy), so for
+real history point ``SNAPSHOT_DIR`` at a mounted persistent volume — no code
+change. ``SnapshotStoreBase`` is the seam for a fully managed backend (e.g.
+AgentBase Memory): implement its three methods and select it in ``build_deps``.
+See CLAUDE.md → "Durable storage" for the volume mount and the Memory path.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -32,7 +38,25 @@ class Snapshot:
     release_notes: Optional[str] = None
 
 
-class SnapshotStore:
+class SnapshotStoreBase(ABC):
+    """Backend seam for time-series snapshots. The file-backed ``SnapshotStore``
+    is the default; a durable managed backend just implements these three."""
+
+    @abstractmethod
+    def save(self, snap: Snapshot) -> None:
+        """Append one snapshot for its (app_id, store)."""
+
+    @abstractmethod
+    def save_table(self, kind: str, app_id: str, store: str, rows: list[dict],
+                   captured_at: Optional[str] = None) -> str:
+        """Persist a raw table (UC1 metadata, UC2 reviews, …); return a locator."""
+
+    @abstractmethod
+    def history(self, app_id: str, store: str) -> list["Snapshot"]:
+        """Return all snapshots for (app_id, store), oldest first."""
+
+
+class SnapshotStore(SnapshotStoreBase):
     def __init__(self, base_dir: str = "data/snapshots"):
         self.base_dir = base_dir
 

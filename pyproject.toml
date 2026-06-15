@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+# Collect only test_*.py (offline, deterministic). The verify_*.py scripts are
+# live smoke tests (hit iTunes/Google Play/LLM) and are run manually, not in CI.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+exclude = ["venv", "data", ".agentbase"]
+
+[tool.ruff.lint]
+# Pyflakes only for now (real bugs: undefined names, unused imports/vars) — keeps
+# the gate meaningful without import-order churn. Widen later.
+select = ["F"]
+ignore = ["E501"]

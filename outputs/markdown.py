@@ -52,6 +52,8 @@ class MarkdownOutput(OutputChannel):
 
     def render(self, result: dict) -> str:
         uc = result.get("use_case")
+        if uc == "help":
+            return self._render_help(result)
         if uc == "hypothesis_check":
             return self._render_hypothesis(result)
         if uc == "uc6_version_impact":
@@ -81,6 +83,21 @@ class MarkdownOutput(OutputChannel):
                 if result.get("mode") == "cross_platform" else self._render_uc9_single(result)
         # Generic fallback for other use cases.
         return result.get("summary", "```json\n" + str(result) + "\n```")
+
+    def _render_help(self, r: dict) -> str:
+        # The suggestion prompts render as clickable chips in the UI (from the
+        # result JSON), so they are intentionally NOT listed here to avoid duplication.
+        lines = []
+        if r.get("answer"):
+            lines.append(r["answer"])
+            lines.append("")
+        for c in r.get("capabilities", []):
+            title, desc = c.get("title", ""), c.get("desc", "")
+            lines.append(f"- {title}" + (f" — {desc}" if desc else ""))
+        if r.get("summary"):
+            lines.append("")
+            lines.append(f"_{r['summary']}_")
+        return "\n".join(lines)
 
     # Shared cross-platform wrapper for the sheet UC1/UC2 use cases.
     def _render_cross(self, result: dict, single_fn, icon: str, title_en: str, title_vi: str) -> str:

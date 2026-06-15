@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>App Intelligence Agent</title>
+  <title>Veridex — App Intelligence Agent</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --bg:#0f1117; --panel:#161b27; --border:#1e2d45; --accent:#22c55e; --muted:#64748b; --text:#e2e8f0; }
@@ -31,30 +32,107 @@
     .bubble ul { margin: 6px 0 6px 18px; }
     .bubble em { color: var(--muted); }
     .typing { color: var(--muted); font-size: 13px; }
-    .chips { max-width: 900px; margin: 0 auto 8px; padding: 0 24px; display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
-    .chip { background: var(--panel); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; }
-    .chip:hover { border-color: var(--accent); }
     footer { padding: 16px 24px 22px; border-top: 1px solid var(--border); }
     .inputbar { max-width: 900px; margin: 0 auto; display: flex; gap: 10px; }
     #input { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 16px; font-size: 14px; resize: none; font-family: inherit; }
     #input:focus { outline: none; border-color: var(--accent); }
     #send { background: var(--accent); color: #04130a; border: none; border-radius: 10px; padding: 0 22px; font-weight: 700; cursor: pointer; font-size: 14px; }
     #send:disabled { opacity: .5; cursor: not-allowed; }
-    .hint { max-width: 900px; margin: 8px auto 0; font-size: 11px; color: var(--muted); text-align: center; }
+    .chartbox { background: #0f1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+    .chartcap { font-size: 12px; color: #93c5fd; margin-bottom: 6px; }
+    .chartbox canvas { max-height: 240px; }
+    .sugbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .sugchip { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; text-align: left; }
+    .sugchip:hover { border-color: var(--accent); }
+    .dlbar { display: flex; gap: 8px; margin-top: 10px; }
+    .dlbtn { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
+    .dlbtn:hover { border-color: var(--accent); }
+    .hbtn { margin-left: auto; background: var(--panel); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+    .hbtn:hover { border-color: var(--accent); }
+    .apanel { border-bottom: 1px solid var(--border); background: #121826; padding: 16px 24px; }
+    .apanel .inner { max-width: 900px; margin: 0 auto; }
+    .apanel h3 { font-size: 13px; color: #93c5fd; margin-bottom: 10px; }
+    .arow { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+    .afield { display: flex; flex-direction: column; gap: 4px; }
+    .afield label { font-size: 11px; color: var(--muted); }
+    .apanel input, .apanel select { background: #0f1117; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+    .apanel input:focus, .apanel select:focus { outline: none; border-color: var(--accent); }
+    .abtn { background: var(--accent); color: #04130a; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; font-size: 13px; }
+    .abtn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--border); font-weight: 600; }
+    .asub { font-size: 12px; color: var(--muted); margin: 6px 0; }
+    #subStatus { font-size: 12px; min-height: 16px; }
+    .subrow { display: flex; align-items: center; gap: 10px; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: 13px; }
+    .abtn:disabled { opacity: .6; cursor: progress; }
+    .spinner { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
+               border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+               animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeInUp .25s ease both; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .subrow.removing { animation: rowOut .2s ease forwards; }
+    @keyframes rowOut { to { opacity: 0; transform: translateX(10px); } }
+    .apanel.open { animation: slideDown .22s ease; }
+    @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .spinner, .fade-in, .subrow.removing, .apanel.open { animation: none; } }
   </style>
 </head>
 <body>
   <header>
     <span class="dot"></span>
-    <h1>App Intelligence Agent</h1>
-    <span class="sub" id="mode">Release Health · Hypothesis Checker</span>
+    <h1>Veridex</h1>
+    <button id="alertsBtn" class="hbtn" onclick="toggleAlerts()">🔔 Cảnh báo</button>
+    <span class="sub" id="mode" style="margin-left:12px">App &amp; game · App Store &amp; Google Play · VI/EN</span>
   </header>
+
+  <section id="alertsPanel" class="apanel" style="display:none">
+    <div class="inner">
+      <h3>🔔 Đăng ký cảnh báo qua Telegram</h3>
+      <div class="asub">Nhận cảnh báo bất thường (rating/rank/version) của app vào Telegram của bạn. Chỉ cần <b>chat ID</b> — token bot do hệ thống giữ.</div>
+      <div class="arow">
+        <div class="afield" style="flex:1; min-width:180px">
+          <label>Telegram chat ID</label>
+          <input id="subChat" placeholder="vd 987654321" />
+        </div>
+        <div class="afield" style="flex:1; min-width:160px">
+          <label>App (tên hoặc store id)</label>
+          <input id="subApp" placeholder="vd zalopay" />
+        </div>
+        <div class="afield">
+          <label>Store</label>
+          <select id="subStore"><option value="ios">iOS</option><option value="android">Android</option><option value="both">Cả hai</option></select>
+        </div>
+        <div class="afield">
+          <label>Ngôn ngữ</label>
+          <select id="subLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
+        </div>
+      </div>
+      <div class="arow">
+        <div class="afield">
+          <label>Tần suất</label>
+          <select id="subFreq" onchange="subFreqChange()"><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần</option></select>
+        </div>
+        <div class="afield" id="weekdayRow" style="display:none">
+          <label>Thứ</label>
+          <select id="subWeekday"></select>
+        </div>
+        <div class="afield">
+          <label>Giờ nhận</label>
+          <select id="subHour"></select>
+        </div>
+        <button class="abtn" onclick="subSave(this)">Lưu đăng ký</button>
+        <button class="abtn ghost" onclick="subTest(this)">Gửi thử</button>
+        <button class="abtn ghost" onclick="subList(this)">Đăng ký của tôi</button>
+      </div>
+      <div id="subStatus"></div>
+      <div id="subListBox"></div>
+    </div>
+  </section>
 
   <div id="messages"></div>
 
   <footer>
     <div class="inputbar">
-      <textarea id="input" rows="1" placeholder="Hỏi về sức khỏe bản cập nhật, hoặc nêu một giả thuyết để kiểm chứng…"></textarea>
+      <textarea id="input" rows="1" placeholder="Hỏi về một app hoặc game: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
       <button id="send" onclick="send()">Gửi</button>
     </div>
   </footer>
@@ -76,7 +154,123 @@
       return wrap;
     }
 
-    function fill(text) { inputEl.value = text; inputEl.focus(); }
+
+    // ---- charts + export (front-end only, from the JSON result) ----
+    function chartSpecs(r) {
+      const uc = r.use_case, out = [];
+      if (uc === 'uc2_reviews_sentiment') {
+        const s = r.star_distribution;
+        if (s) out.push({ title: 'Phân bố sao', type: 'bar', labels: ['5★','4★','3★','2★','1★'],
+                          data: ['5','4','3','2','1'].map(k => (s[k] || {}).count || 0) });
+        if ((r.weekly_trend || []).length > 1)
+          out.push({ title: 'Rating theo tuần', type: 'line', labels: r.weekly_trend.map(w => w.week),
+                     data: r.weekly_trend.map(w => w.avg_rating) });
+      } else if (uc === 'uc4_kpi_dashboard' && (r.trend || []).length > 1) {
+        out.push({ title: 'Rating theo thời gian', type: 'line', labels: r.trend.map(t => t.date),
+                   data: r.trend.map(t => t.rating) });
+      } else if (uc === 'uc7_competitive_comparison' && r.comparison) {
+        out.push({ title: 'Rating đối thủ', type: 'bar', labels: r.comparison.map(c => c.name),
+                   data: r.comparison.map(c => c.rating) });
+      } else if (uc === 'uc8_competitor_weakness' && r.opportunities) {
+        out.push({ title: 'Cơ hội (số phàn nàn)', type: 'bar', labels: r.opportunities.map(o => o.theme),
+                   data: r.opportunities.map(o => o.count) });
+      }
+      return out;
+    }
+
+    function appendChart(host, spec, prefix) {
+      const box = document.createElement('div'); box.className = 'chartbox';
+      const cap = document.createElement('div'); cap.className = 'chartcap';
+      cap.textContent = (prefix ? prefix + ' · ' : '') + spec.title; box.appendChild(cap);
+      const cv = document.createElement('canvas'); box.appendChild(cv); host.appendChild(box);
+      new Chart(cv, {
+        type: spec.type,
+        data: { labels: spec.labels, datasets: [{ label: spec.title, data: spec.data,
+                backgroundColor: 'rgba(34,197,94,.45)', borderColor: '#22c55e', borderWidth: 2,
+                tension: .3, fill: spec.type !== 'line' }] },
+        options: { animation: false, plugins: { legend: { display: false } },
+                   scales: { x: { ticks: { color: '#94a3b8', font: { size: 10 } } },
+                             y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } },
+      });
+    }
+
+    function tableFor(result) {
+      const uc = result.use_case;
+      const blocks = result.platforms ? Object.entries(result.platforms) : [['', result]];
+      let headers = null; const rows = [];
+      const add = (store, h, arr) => { if (!headers) headers = store ? ['store', ...h] : h;
+                                       arr.forEach(row => rows.push(store ? [store, ...row] : row)); };
+      for (const [store, r] of blocks) {
+        if (!r || r.error) continue;
+        if (uc === 'uc7_competitive_comparison' && r.comparison)
+          add(store, ['app','rank','rating','ratings_count','price','version'],
+              r.comparison.map(c => [c.name, c.rank, c.rating, c.ratings_count, c.price, c.version]));
+        else if (uc === 'uc8_competitor_weakness' && r.opportunities)
+          add(store, ['theme','category','count','competitors','opportunity'],
+              r.opportunities.map(o => [o.theme, o.category, o.count, (o.competitors || []).join('; '), o.opportunity]));
+        else if (uc === 'uc2_reviews_sentiment' && r.star_distribution)
+          add(store, ['star','count','pct'],
+              ['5','4','3','2','1'].map(s => [s + '★', (r.star_distribution[s] || {}).count, (r.star_distribution[s] || {}).pct]));
+        else if (uc === 'uc4_kpi_dashboard' && r.trend)
+          add(store, ['date','rating','rank','ratings_count','version'],
+              r.trend.map(t => [t.date, t.rating, t.rank, t.ratings_count, t.version]));
+        else if (uc === 'uc9_trend_alert' && r.alerts)
+          add(store, ['type','severity','message'], r.alerts.map(a => [a.type, a.severity, a.message]));
+        else if (uc === 'uc10_insight_qa' && r.action_items)
+          add(store, ['priority','action','rationale'], r.action_items.map(a => [a.priority, a.action, a.rationale]));
+        else if (uc === 'uc1_store_metadata' && r.metadata) {
+          const m = r.metadata;
+          add(store, ['field','value'], [['name', m.name], ['category', m.category], ['price', m.price],
+              ['version', m.version], ['rating', m.avg_rating], ['ratings_count', m.rating_count],
+              ['rank', (r.ranking || {}).rank]]);
+        }
+      }
+      return headers ? { headers, rows } : null;
+    }
+
+    function dl(name, text, type) {
+      const u = URL.createObjectURL(new Blob([text], { type }));
+      const a = document.createElement('a'); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u);
+    }
+    const csvCell = v => (v == null) ? '' : (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+
+    // Clickable suggestion chips (e.g. the help result) — tap to ask that prompt.
+    function renderSuggestions(host, suggestions) {
+      if (!Array.isArray(suggestions) || !suggestions.length) return;
+      const bar = document.createElement('div'); bar.className = 'sugbar';
+      suggestions.forEach(s => {
+        const c = document.createElement('button'); c.className = 'sugchip'; c.textContent = s;
+        c.onclick = () => { if (!sendBtn.disabled) { inputEl.value = s; send(); } };
+        bar.appendChild(c);
+      });
+      host.appendChild(bar);
+    }
+
+    function renderExtras(host, result, exportAsked) {
+      if (!result || typeof result !== 'object' || result.error) return;
+      try {
+        renderSuggestions(host, result.suggestions);
+        if (result.use_case === 'help') return;  // help has only suggestions, no charts/export
+        let chartCount = 0;
+        const blocks = result.platforms ? Object.entries(result.platforms) : [['', result]];
+        blocks.forEach(([store, r]) => { if (r && !r.error) chartSpecs(r).forEach(spec => { appendChart(host, spec, store); chartCount++; }); });
+        const tbl = tableFor(result);
+        // Offer downloads only when there's meaningful data (a table or a chart),
+        // or when the user explicitly asked to export/download.
+        if (!tbl && chartCount === 0 && !exportAsked) return;
+        const bar = document.createElement('div'); bar.className = 'dlbar';
+        if (tbl) {
+          const b = document.createElement('button'); b.className = 'dlbtn'; b.textContent = '⬇ CSV';
+          b.onclick = () => dl((result.use_case || 'export') + '.csv',
+            '﻿' + [tbl.headers, ...tbl.rows].map(row => row.map(csvCell).join(',')).join('\n'), 'text/csv');
+          bar.appendChild(b);
+        }
+        const j = document.createElement('button'); j.className = 'dlbtn'; j.textContent = '⬇ JSON';
+        j.onclick = () => dl((result.use_case || 'export') + '.json', JSON.stringify(result, null, 2), 'application/json');
+        bar.appendChild(j);
+        host.appendChild(bar);
+      } catch (e) { console.warn('extras failed', e); }
+    }
 
     async function send() {
       if (sendBtn.disabled) return;       // a send is already in flight
@@ -117,6 +311,11 @@
         const data = await resp.json();
         const md = data.markdown || '```json\n' + JSON.stringify(data.result || data, null, 2) + '\n```';
         tBubble.innerHTML = marked.parse(md);
+        // Show export buttons only for meaningful data, or when the user asked to download.
+        const exportAsked = ['tải về', 'tải xuống', 'tải file', 'xuất file', 'xuất dữ liệu',
+          'xuất csv', 'xuất json', 'export', 'download', 'file csv', 'file json', '.csv', '.json']
+          .some(k => text.toLowerCase().includes(k));
+        renderExtras(tBubble, data.result, exportAsked);   // charts + (gated) CSV/JSON export
 
         const r = data.result || {};
         if (r.use_case === 'hypothesis_check') {
@@ -145,11 +344,127 @@
       }
     });
 
+    // ---- Alerts panel (per-user Telegram subscriptions) ----
+    const _pad = n => String(n).padStart(2, '0');
+    const _esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const _DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+    function toggleAlerts() {
+      const p = document.getElementById('alertsPanel');
+      const open = p.style.display === 'none';
+      p.style.display = open ? 'block' : 'none';
+      if (open) { p.classList.remove('open'); void p.offsetWidth; p.classList.add('open'); }
+    }
+    function subFreqChange() {
+      document.getElementById('weekdayRow').style.display =
+        document.getElementById('subFreq').value === 'weekly' ? 'flex' : 'none';
+    }
+    function _val(id) { return document.getElementById(id).value.trim(); }
+    // kind: 'ok' (green ✓) | 'err' (red ✗) | 'info' (amber ⓘ)
+    function _subStatus(msg, kind) {
+      const s = document.getElementById('subStatus');
+      if (!msg) { s.textContent = ''; return; }
+      const icon = kind === 'err' ? '✗ ' : kind === 'info' ? 'ⓘ ' : '✓ ';
+      s.textContent = icon + msg;
+      s.style.color = kind === 'err' ? '#f87171' : kind === 'info' ? '#fbbf24' : '#22c55e';
+      s.classList.remove('fade-in'); void s.offsetWidth; s.classList.add('fade-in');  // retrigger
+    }
+    // Disable + spinner on the clicked button while its request is in flight.
+    async function _busy(btn, label, fn) {
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span>${label}`;
+      try { return await fn(); }
+      finally { btn.disabled = false; btn.innerHTML = orig; }
+    }
+    async function subCall(params) {
+      try {
+        const resp = await fetch('/invocations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-GreenNode-AgentBase-Session-Id': sessionId,
+            'X-GreenNode-AgentBase-User-Id': 'web-user',
+          },
+          body: JSON.stringify({ action: 'manage_subscription', params }),
+        });
+        const data = await resp.json();
+        return data.result || data;
+      } catch (e) {
+        return { status: 'error', error: 'Lỗi kết nối agent', _neterr: true };
+      }
+    }
+    function _subFields() {
+      return { chat_id: _val('subChat'), app: _val('subApp'), store: _val('subStore'),
+               freq: _val('subFreq'), hour: _val('subHour'), weekday: _val('subWeekday'), lang: _val('subLang') };
+    }
+    function _loadList(chat) {
+      return subCall({ op: 'list', chat_id: chat }).then(r => {
+        const box = document.getElementById('subListBox');
+        const subs = r.subscriptions || [];
+        if (!subs.length) { box.innerHTML = '<div class="asub fade-in">Chưa có đăng ký nào.</div>'; return r; }
+        box.innerHTML = subs.map((s, i) => {
+          const when = s.freq === 'weekly'
+            ? (_DAYS[(s.weekday ?? 0)] + ' ' + _pad(s.hour) + ':00')
+            : ('hằng ngày ' + _pad(s.hour) + ':00');
+          return `<div class="subrow fade-in" style="animation-delay:${i * 40}ms"><span>${_esc(s.app)} · ${s.store} · ${when}</span>`
+               + `<button class="dlbtn" onclick="subDelete(this,'${s.id}','${_esc(chat)}')">Xoá</button></div>`;
+        }).join('');
+        return r;
+      });
+    }
+    async function subSave(btn) {
+      const f = _subFields();
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', 'err');
+      if (!f.app) return _subStatus('Nhập app', 'err');
+      await _busy(btn, 'Đang lưu…', async () => {
+        const r = await subCall({ op: 'create', ...f });
+        _subStatus(r.message || r.error, r.status === 'success' ? 'ok' : 'err');
+        if (r.status === 'success') { document.getElementById('subApp').value = ''; await _loadList(f.chat_id); }
+      });
+    }
+    async function subTest(btn) {
+      const f = _subFields();
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', 'err');
+      await _busy(btn, 'Đang gửi…', async () => {
+        const r = await subCall({ op: 'test', chat_id: f.chat_id, app: f.app, lang: f.lang });
+        const d = (r.delivery || {}).status;
+        const kind = d === 'sent' ? 'ok' : d === 'dry_run' ? 'info' : 'err';
+        _subStatus(r.message || r.error, kind);
+      });
+    }
+    async function subList(btn) {
+      const chat = _val('subChat');
+      if (!chat) return _subStatus('Nhập Telegram chat ID để xem đăng ký', 'err');
+      await _busy(btn, 'Đang tải…', async () => {
+        const r = await _loadList(chat);
+        _subStatus(r.message || '', 'ok');
+      });
+    }
+    async function subDelete(btn, id, chat) {
+      const row = btn.closest('.subrow');
+      if (row) row.classList.add('removing');
+      await _busy(btn, '…', async () => {
+        const r = await subCall({ op: 'delete', id, chat_id: chat });
+        _subStatus(r.message || r.error, r.status === 'success' ? 'ok' : 'err');
+        await _loadList(chat);
+      });
+    }
+    // Populate hour (0-23, default 9) + weekday selects.
+    document.getElementById('subHour').innerHTML =
+      Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === 9 ? ' selected' : ''}>${_pad(h)}:00</option>`).join('');
+    document.getElementById('subWeekday').innerHTML =
+      _DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
+
     bubble('bot', marked.parse(
-      '**Xin chào! Tôi là App Intelligence Agent (AI).**\n\n' +
-      '- 📊 **Release Health**: "kiểm tra sức khỏe bản cập nhật của <app>"\n' +
-      '- 🔬 **Hypothesis Checker**: nêu một giả thuyết, tôi sẽ hỏi lại rồi kiểm chứng bằng dữ liệu\n\n' +
-      'Nhập câu hỏi vào ô bên dưới để bắt đầu.'
+      '**Veridex — App Intelligence Agent**\n\n' +
+      'Biến tín hiệu công khai trên App Store / Google Play — cả **ứng dụng lẫn game** (metadata, review, rating, rank) — thành quyết định sản phẩm có dẫn chứng. Hỏi tự nhiên bằng Tiếng Việt hoặc English.\n\n' +
+      'Tôi làm được: thông tin & xếp hạng store · review & cảm xúc · KPI/xu hướng · tác động bản cập nhật · so sánh & điểm yếu đối thủ · cảnh báo bất thường · hỏi đáp tổng hợp · kiểm chứng giả thuyết.\n\n' +
+      '**Ví dụ:**\n' +
+      '- "review gần đây của Zalo nói gì?"\n' +
+      '- "Liên Quân Mobile so với game cùng thể loại thế nào?"\n' +
+      '- "Genshin Impact có dấu hiệu bất thường không?"\n\n' +
+      '🔔 Muốn nhận cảnh báo qua Telegram? Bấm **Cảnh báo** ở góc trên.'
     ));
   </script>
 </body>

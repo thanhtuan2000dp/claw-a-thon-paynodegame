@@ -17,6 +17,8 @@ from typing import Optional
 
 import httpx
 
+from core.cache import TTL_METADATA, TTL_SEARCH, ttl_cache
+
 from .base import (
     CAP_METADATA,
     CAP_SEARCH,
@@ -78,6 +80,7 @@ class ItunesConnector(AppDataConnector):
         except httpx.HTTPError as exc:
             raise ConnectorError(f"iTunes request failed: {exc}") from exc
 
+    @ttl_cache(TTL_SEARCH)
     def search_app(self, term: str, store: str = "ios", country=None, lang=None) -> list[AppRef]:
         data = self._get(
             SEARCH_URL,
@@ -98,6 +101,7 @@ class ItunesConnector(AppDataConnector):
             )
         return refs
 
+    @ttl_cache(TTL_METADATA)
     def get_metadata(self, app_id: str, store: str = "ios", country=None, lang=None) -> AppMetadata:
         data = self._get(LOOKUP_URL, {"id": app_id, "country": country or self.country})
         results = data.get("results", [])

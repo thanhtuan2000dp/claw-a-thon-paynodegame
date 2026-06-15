@@ -51,6 +51,18 @@ def _keywords(title: str) -> list[str]:
     return [t for t in toks if len(t) >= 2 and t not in _GENERIC_WORDS]
 
 
+def _compare_sort_key(r: dict) -> tuple:
+    """Comparison-table priority: category rank (best/lowest first), then ratings
+    volume (most first), then star rating (highest first). A missing value sorts
+    last within its tier so apps with full data lead. Applies to apps and games."""
+    rank, rc, rt = r.get("rank"), r.get("ratings_count"), r.get("rating")
+    return (
+        rank is None, rank if rank is not None else 0,   # 1) rank ascending, n/a last
+        rc is None, -(rc or 0),                          # 2) ratings_count descending
+        rt is None, -(rt or 0),                          # 3) rating descending
+    )
+
+
 class CompetitiveComparisonUseCase(UseCase):
     name = "uc7_competitive_comparison"
     description = (
@@ -141,6 +153,10 @@ class CompetitiveComparisonUseCase(UseCase):
             rows = [r for r in ex.map(lambda t: row(*t), targets) if r]
         if len(rows) < 2:
             return {"use_case": self.name, "error": "not enough apps to compare", "notes": notes}
+
+        # Order the comparison by priority — rank, then ratings volume, then stars —
+        # so the table/chart read top-down by competitive standing (apps & games).
+        rows.sort(key=_compare_sort_key)
 
         leaders = self._leaders(rows)
         positioning = self._positioning(rows, leaders, deps, notes, lang)

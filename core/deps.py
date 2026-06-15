@@ -17,6 +17,7 @@ from core.conversation import ConversationStore, LocalConversationStore
 from core.llm import LLM, make_llm
 from core.registry import discover_connector_classes
 from storage.snapshots import SnapshotStore
+from storage.subscriptions import SubscriptionStore, SubscriptionStoreBase
 
 # Preferred connector order per capability (premium source first where it wins).
 # Sensor Tower is scoped to iOS (see its ``stores``), so on Android these lists
@@ -40,6 +41,7 @@ class Deps:
     storage: SnapshotStore
     config: dict = field(default_factory=dict)
     conversation: ConversationStore = field(default_factory=LocalConversationStore)
+    subscriptions: SubscriptionStoreBase = field(default_factory=SubscriptionStore)
     _llms: dict[str, LLM] = field(default_factory=dict)
 
     @property
@@ -94,8 +96,10 @@ def build_deps() -> Deps:
 
     storage = SnapshotStore(os.environ.get("SNAPSHOT_DIR", "data/snapshots"))
     conversation = LocalConversationStore(os.environ.get("CONVERSATION_DIR", "data/conversations"))
+    subscriptions = SubscriptionStore(os.environ.get("SUBSCRIPTION_DIR", "data/subscriptions"))
     config = {
         "default_store": os.environ.get("DEFAULT_STORE", "ios"),
         "default_country": country,
     }
-    return Deps(connectors=connectors, storage=storage, conversation=conversation, config=config)
+    return Deps(connectors=connectors, storage=storage, conversation=conversation,
+                subscriptions=subscriptions, config=config)

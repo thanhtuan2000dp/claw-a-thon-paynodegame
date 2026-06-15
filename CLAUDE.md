@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**App Intelligence Agent** — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals into product decisions. It ships several use cases from the "AI Agent UseCases" sheet — store-metadata crawl (sheet UC1 = `uc1_store_metadata`), reviews & sentiment (sheet UC2 = `uc2_reviews_sentiment`), and a post-release health check (sheet UC6 = `uc6_version_impact`) — plus a standalone Hypothesis Checker that stress-tests an executive's claim against the data (not part of the sheet).
+**Veridex** (App Intelligence Agent) — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals (both **apps and games**) into product decisions. It ships many use cases from the "AI Agent UseCases" sheet (see the sheet↔code mapping below) — e.g. store-metadata crawl (sheet UC1 = `uc1_store_metadata`), reviews & sentiment (sheet UC2 = `uc2_reviews_sentiment`), a post-release health check (sheet UC6 = `uc6_version_impact`) — plus a standalone Hypothesis Checker that stress-tests an executive's claim against the data (not part of the sheet) and per-user Telegram alert subscriptions for UC9.
 
 It is a Starlette-based HTTP service wrapped by `greennode-agentbase`: `GET /health`, `GET /` (chat UI), `POST /invocations`.
 
@@ -26,9 +26,14 @@ python main.py
 ./venv/bin/python tests/verify_uc2_reviews_sentiment.py      # sheet UC2 reviews & sentiment (live)
 ./venv/bin/python tests/test_hypothesis.py      # Hypothesis Checker multi-turn run
 ./venv/bin/python tests/verify_sensortower.py   # probe Sensor Tower endpoints with your token (never prints the token)
+
+# Offline suite + lint (no network/LLM) — what CI runs:
+pip install -r requirements-dev.txt   # pytest + ruff + httpx, no greennode-agentbase
+ruff check .                          # pyflakes (select = ["F"]); config in pyproject.toml
+pytest                                # tests/test_*.py only — fast, deterministic, mocked
 ```
 
-There is no test runner config, linter, or build step — tests are plain `python` scripts with `if __name__ == "__main__"` entrypoints, not pytest. Add `--no-live` style flags inside the script when a test needs an offline mode.
+Two test tiers: **`test_*.py`** are offline unit tests (mocked connectors, no network/LLM) — collected by pytest and run in CI (`.github/workflows/ci.yml`). **`verify_*.py`** are live smoke scripts with `if __name__ == "__main__"` entrypoints (hit real stores/LLM); they are *not* pytest-collected. Add an offline `test_*.py` for any new deterministic logic so it is covered by CI.
 
 ### Invoking the agent
 
@@ -99,10 +104,36 @@ Connectors **degrade gracefully and must never crash the agent**. A capability i
 ### Other conventions
 
 - **Bilingual by design** — `core/lang.py` detects Vietnamese vs English from the user's text and maps language → market (`vi`→VN store, `en`→US store). Use cases localise output; `params["lang"]` is auto-filled by the router.
-- **Snapshots** (`storage/snapshots.py`) — append-only daily JSON-lines per app under `data/snapshots/`, letting the agent build its own rating/version time series (the fallback signal when there's no review baseline). Container storage is ephemeral; durable history needs AgentBase Memory.
+- **Snapshots** (`storage/snapshots.py`) — append-only daily JSON-lines per app under `SNAPSHOT_DIR` (default `data/snapshots/`), letting the agent build its own rating/version time series (the fallback signal when there's no review baseline). `SnapshotStoreBase` is the backend seam (mirrors the `ConversationStore` ABC); the file impl is durable when its dir is durable — see **Durable storage** below.
 - **LLM** (`core/llm.py`) — OpenAI-compatible (GreenNode MaaS) via `langchain_openai.ChatOpenAI`. `complete_json()` tolerates ```json fences, surrounding prose, and `<think>` reasoning blocks (Qwen gets `/no_think` auto-appended). Use it rather than parsing model output by hand. **Multi-model:** all MaaS models share one endpoint + key, so `deps.llm_for(model)` returns a per-model LLM (cached) — use cases can mix a fast model and a stronger one and call them concurrently. `deps.llm` is just `llm_for()` on the default `LLM_MODEL`. **Fail-fast:** every call is bounded by `LLM_TIMEOUT` (env, default 60s) with `LLM_MAX_RETRIES` (default 0) — a slow/down MaaS degrades the caller quickly (a note + fallback) instead of hanging; raise `LLM_TIMEOUT` only to wait out a borderline-slow model. Pick a fast instruction-tuned model (e.g. `google/gemma-4-31b-it`) for `LLM_MODEL`; reasoning models can exceed the timeout on bigger prompts.
 - **Verdict ensemble** (`usecases/uc_hypothesis_check.py`) — `_narrative` can poll several models in parallel and **majority-vote** the verdict. Set `HYPOTHESIS_ENSEMBLE_MODELS` (comma-separated model paths) to enable; unset = a single call on `LLM_MODEL` (prior behaviour). The GATE is now also enforced in code (`_gate_verdict`): an untestable necessary condition caps the verdict at `inconclusive`, a refuted one forces `refuted` — guaranteed even if a model ignores the prompt. A split panel can't claim high confidence.
-- **Conversation** (`core/conversation.py`) — swappable multi-turn store for the Hypothesis Checker; `LocalConversationStore` (JSON per session) locally, AgentBase Memory in production.
+- **Conversation** (`core/conversation.py`) — swappable multi-turn store for the Hypothesis Checker; `LocalConversationStore` (JSON per session) under `CONVERSATION_DIR`. The `ConversationStore` ABC is the seam for a managed backend — see **Durable storage** below.
+
+### Durable storage
+
+Both stores are file-backed and write under env-configurable dirs (`SNAPSHOT_DIR`, `CONVERSATION_DIR`). They are **durable iff those dirs are durable**:
+
+- **Persistent volume (recommended).** Point `SNAPSHOT_DIR` / `CONVERSATION_DIR` at a mounted persistent volume in the deployment. History then survives redeploys with **no code change** — the container root disk is ephemeral, a mounted volume is not.
+- **Managed backend (AgentBase Memory) — future drop-in.** The seams (`SnapshotStoreBase`, `ConversationStore`) let a Memory-backed store replace the file impls in `build_deps` without touching use cases. The Memory SDK (`greennode_agentbase.memory.MemoryClient`) is **async + IAM-authenticated** and needs a provisioned `memory_id` (`greennode memory create -e <expiry>`). Conversation turns map cleanly to `create_event_async` / `list_events_async` (one actor, `session_id` = the conversation); event expiry makes it a poor fit for long-lived time-series snapshots, so keep snapshots on a volume. Not wired yet — provision a Memory first, then implement the adapter against that resource so it can be verified live.
+
+### Scheduler & alerts (UC9)
+
+UC9 detects anomalies; the **watch** (`scheduler/`) runs it on a schedule and pushes alerts.
+
+- **Run a cycle:** `python -m scheduler` runs UC9 over the watchlist once and prints a JSON report. It's a **one-shot CLI** meant to be driven by an *external* scheduler (platform cron / k8s CronJob / unix `cron`) — e.g. `0 * * * * cd /app && python -m scheduler`.
+- **In-process scheduler (no cron):** set `ENABLE_SCHEDULER=1` and `main.py` spawns a daemon thread (`scheduler.watch.start_background_scheduler`) that runs the watch every `SCHEDULER_INTERVAL_SECONDS` (default 300) — delivering subscription alerts at their scheduled hour with just the server running. Off by default. Schedule granularity is hourly (`due_subscriptions` matches `hour` in `ALERT_TZ`); the `last_sent` guard makes the frequent poll idempotent. On a single long-running runtime (e.g. one AgentBase instance) this is the simplest path; with multiple replicas, prefer the external CLI + one cron to avoid duplicate sends, and keep `SUBSCRIPTION_DIR` on a shared/persistent volume.
+- **Watchlist:** `WATCHLIST_FILE` (path to a JSON list of `{"app","store","lang"?,"country"?}`) or `ALERT_WATCHLIST` shorthand (`"Zalo|both|vi, com.spotify.music|android"`). Empty → the cycle no-ops with a warning.
+- **Delivery (`core/alerts.py`):** Telegram when `TELEGRAM_BOT_TOKEN` is set, else **dry-run** (logs the message, sends nothing) — so the watch is always safe to run without credentials. The bot token is the shared server secret; the **`chat_id` is per-recipient** — `Notifier.send(text, chat_id=None)` takes it per call (subscriptions) or falls back to the instance default (`TELEGRAM_CHAT_ID`, the global watchlist). `send()` never raises; a delivery failure degrades to an `error` status and the cycle continues. Stdlib-only (`urllib`), no new dependency. `format_uc9_alert()` turns a UC9 result (single-store or cross-platform) into the message, or `None` when there's no anomaly.
+- The whole cycle is pure given `(deps, notifier, watchlist)` — `run_watch_cycle()` is unit-tested offline with a fake connector + a `DryRunNotifier` (see `tests/test_watch.py`).
+
+### Per-user alert subscriptions
+
+End-users self-register *which app's* UC9 alerts go to *their* Telegram chat on *what schedule* — without ever touching the bot token.
+
+- **Surface:** the chat UI's **🔔 Cảnh báo** panel (`ui/chat.html`) posts `{action:"manage_subscription", params:{op,…}}` to the existing `/invocations` (no new endpoint). `usecases/manage_subscription.py` handles `op` = `create` | `list` | `delete` | `test` (test does a live delivery so the user can confirm their chat). All ops require `chat_id`.
+- **Identity = `chat_id`** (self-serve, no auth). Telegram refuses delivery to anyone who hasn't `/start`-ed the bot, so you can't push to strangers; caps `ALERT_MAX_SUBS` (default 200) / `ALERT_MAX_SUBS_PER_CHAT` (default 20) bound abuse. `list`/`delete` are scoped to the caller's `chat_id`.
+- **Store (`storage/subscriptions.py`):** `SubscriptionStore` (one JSON file under `SUBSCRIPTION_DIR`, default `data/subscriptions`) behind the `SubscriptionStoreBase` seam; durable on a volume like snapshots. Reaches use cases via `deps.subscriptions`.
+- **Schedule = fixed slots:** daily at `hour`, or weekly on `weekday` (0=Mon) at `hour`, evaluated in `ALERT_TZ` (default `Asia/Ho_Chi_Minh`). The cron runs **hourly** (`0 * * * * … python -m scheduler`); `due_subscriptions()` selects what's due and a `last_sent` date guard makes delivery idempotent no matter how often cron fires. `main()` runs **both** the global env watchlist and due subscriptions; `scheduler/` now calls `load_dotenv()` so cron reads `.env` like the server.
 
 ## Config & secrets
 
