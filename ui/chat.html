@@ -41,6 +41,9 @@
     .chartbox { background: #0f1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
     .chartcap { font-size: 12px; color: #93c5fd; margin-bottom: 6px; }
     .chartbox canvas { max-height: 240px; }
+    .sugbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .sugchip { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; text-align: left; }
+    .sugchip:hover { border-color: var(--accent); }
     .dlbar { display: flex; gap: 8px; margin-top: 10px; }
     .dlbtn { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
     .dlbtn:hover { border-color: var(--accent); }
@@ -78,7 +81,7 @@
     <span class="dot"></span>
     <h1>Veridex</h1>
     <button id="alertsBtn" class="hbtn" onclick="toggleAlerts()">🔔 Cảnh báo</button>
-    <span class="sub" id="mode" style="margin-left:12px">App Store &amp; Google Play · hỏi tự nhiên (VI/EN)</span>
+    <span class="sub" id="mode" style="margin-left:12px">App &amp; game · App Store &amp; Google Play · VI/EN</span>
   </header>
 
   <section id="alertsPanel" class="apanel" style="display:none">
@@ -129,7 +132,7 @@
 
   <footer>
     <div class="inputbar">
-      <textarea id="input" rows="1" placeholder="Hỏi về một app: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
+      <textarea id="input" rows="1" placeholder="Hỏi về một app hoặc game: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
       <button id="send" onclick="send()">Gửi</button>
     </div>
   </footer>
@@ -231,9 +234,23 @@
     }
     const csvCell = v => (v == null) ? '' : (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
 
+    // Clickable suggestion chips (e.g. the help result) — tap to ask that prompt.
+    function renderSuggestions(host, suggestions) {
+      if (!Array.isArray(suggestions) || !suggestions.length) return;
+      const bar = document.createElement('div'); bar.className = 'sugbar';
+      suggestions.forEach(s => {
+        const c = document.createElement('button'); c.className = 'sugchip'; c.textContent = s;
+        c.onclick = () => { if (!sendBtn.disabled) { inputEl.value = s; send(); } };
+        bar.appendChild(c);
+      });
+      host.appendChild(bar);
+    }
+
     function renderExtras(host, result) {
       if (!result || typeof result !== 'object' || result.error) return;
       try {
+        renderSuggestions(host, result.suggestions);
+        if (result.use_case === 'help') return;  // help has only suggestions, no charts/export
         const blocks = result.platforms ? Object.entries(result.platforms) : [['', result]];
         blocks.forEach(([store, r]) => { if (r && !r.error) chartSpecs(r).forEach(spec => appendChart(host, spec, store)); });
         const bar = document.createElement('div'); bar.className = 'dlbar';
@@ -433,12 +450,12 @@
 
     bubble('bot', marked.parse(
       '**Veridex — App Intelligence Agent**\n\n' +
-      'Biến tín hiệu công khai trên App Store / Google Play (metadata, review, rating, rank) thành quyết định sản phẩm có dẫn chứng. Hỏi tự nhiên bằng Tiếng Việt hoặc English.\n\n' +
+      'Biến tín hiệu công khai trên App Store / Google Play — cả **ứng dụng lẫn game** (metadata, review, rating, rank) — thành quyết định sản phẩm có dẫn chứng. Hỏi tự nhiên bằng Tiếng Việt hoặc English.\n\n' +
       'Tôi làm được: thông tin & xếp hạng store · review & cảm xúc · KPI/xu hướng · tác động bản cập nhật · so sánh & điểm yếu đối thủ · cảnh báo bất thường · hỏi đáp tổng hợp · kiểm chứng giả thuyết.\n\n' +
       '**Ví dụ:**\n' +
       '- "review gần đây của Zalo nói gì?"\n' +
-      '- "ZaloPay so với đối thủ cùng nhóm thế nào?"\n' +
-      '- "MoMo có dấu hiệu bất thường không?"\n\n' +
+      '- "Liên Quân Mobile so với game cùng thể loại thế nào?"\n' +
+      '- "Genshin Impact có dấu hiệu bất thường không?"\n\n' +
       '🔔 Muốn nhận cảnh báo qua Telegram? Bấm **Cảnh báo** ở góc trên.'
     ));
   </script>

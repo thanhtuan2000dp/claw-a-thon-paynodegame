@@ -3,7 +3,8 @@
 > Claw-a-thon 2026 · Track: **Automation & Integration** · Platform: **GreenNode AgentBase**
 
 **Veridex** ("veritas" + "index" — a truth index over app-store signals) turns public
-App Store / Google Play signals (metadata, reviews, ratings, ranks) into evidence-based
+App Store / Google Play signals — for both **apps and games** (metadata, reviews, ratings,
+ranks) — into evidence-based
 product decisions: store metadata, reviews & sentiment, KPI trends, release-health checks,
 competitor comparison & weaknesses, anomaly alerts (with per-user Telegram subscriptions),
 free-form Q&A, and data-backed hypothesis verdicts. Bilingual VI/EN.

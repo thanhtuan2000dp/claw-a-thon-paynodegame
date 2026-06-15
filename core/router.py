@@ -60,6 +60,32 @@ _STOPWORDS = {
 _IOS_HINTS = ("ios", "iphone", "ipad", "app store", "appstore", "apple store")
 _ANDROID_HINTS = ("android", "google play", "play store", "playstore", "ch play", "chplay")
 
+# Greeting / "what can you do" detection -> the `help` use case. Caught BEFORE the
+# LLM router so a greeting never gets misrouted into an app analysis (and needs no
+# LLM call). Kept tight to avoid swallowing real queries.
+_GREETINGS = {"hi", "hello", "helo", "hey", "yo", "hallo", "chào", "xin chào", "chào bạn",
+              "alo", "halo", "hí", "start", "/start"}
+_HELP_WORDS = {"help", "trợ giúp", "hướng dẫn", "menu", "bắt đầu"}
+_HELP_PHRASES = (
+    "làm được gì", "làm được những gì", "làm gì được", "có thể làm gì", "giúp được gì",
+    "giúp gì được", "bạn là ai", "bạn là gì", "agent là gì", "dùng thế nào", "dùng như thế nào",
+    "dùng ra sao", "hoạt động thế nào", "tính năng gì", "có gì",
+    "what can you do", "what can u do", "who are you", "what are you", "how to use",
+    "how do you work", "what do you do", "your capabilities", "list features",
+)
+
+
+def _looks_like_help(message: str) -> bool:
+    """True for a bare greeting or a meta question about the assistant itself."""
+    m = message.lower().strip(" \t\n?!.…")
+    if not m:
+        return False
+    if m in _GREETINGS or m in _HELP_WORDS:
+        return True
+    if len(m.split()) <= 4 and any(m == g or m.startswith(g + " ") for g in _GREETINGS):
+        return True
+    return any(p in m for p in _HELP_PHRASES)
+
 
 def _detect_store(low: str):
     if any(h in low for h in _IOS_HINTS):
@@ -158,7 +184,12 @@ class Router:
         message = payload.get("message")
         session_id = getattr(context, "session_id", None) or payload.get("session_id") or "default"
 
-        if not action and message:
+        if not action and message and "help" in self.use_cases and _looks_like_help(message):
+            # Greeting / "what can you do" — answer with capabilities + suggestions
+            # instead of routing to an analysis (and without spending an LLM call).
+            action = "help"
+            params.setdefault("message", message)
+        elif not action and message:
             # LLM-first: the model picks the action and extracts params (app, store,
             # window, dates), using recent session context to resolve follow-ups that
             # omit the app or refer back ("điều này", "nó"). Falls back to the keyword
