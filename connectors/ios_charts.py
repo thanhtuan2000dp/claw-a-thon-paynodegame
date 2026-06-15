@@ -25,6 +25,8 @@ from typing import Optional
 
 import httpx
 
+from core.cache import TTL_CHART, ttl_cache
+
 from .base import CAP_CATEGORY, CAP_RANKING, AppDataConnector, AppRef, ConnectorError, RankPoint
 
 BASE_URL = "https://rss.marketingtools.apple.com/api/v2"
@@ -69,6 +71,7 @@ class IosChartsConnector(AppDataConnector):
             return _DEFAULT_FEED
         return _FEEDS.get(category.strip().lower(), _DEFAULT_FEED)
 
+    @ttl_cache(TTL_CHART)
     def _fetch_chart(self, feed: str, country: str) -> list[dict]:
         url = f"{BASE_URL}/{country.lower()}/apps/{feed}/{self.limit}/apps.json"
         try:
@@ -79,6 +82,7 @@ class IosChartsConnector(AppDataConnector):
             raise ConnectorError(f"iOS charts {feed}/{country} failed: {exc}") from exc
         return data.get("feed", {}).get("results", []) or []
 
+    @ttl_cache(TTL_CHART)
     def _fetch_genre_chart(self, genre_id: str, country: str) -> list[dict]:
         """Top-free chart WITHIN a genre via the old iTunes RSS (the marketingtools v2
         feed has no genre filter). Returns ordered apps — the app's position is its

@@ -37,6 +37,8 @@ from typing import Optional
 
 import httpx
 
+from core.cache import TTL_REVIEWS, ttl_cache
+
 from .base import CAP_REVIEWS, AppDataConnector, ConnectorError, Review
 
 _RSS_URL = (
@@ -117,6 +119,7 @@ class AppStoreReviewsConnector(AppDataConnector):
     def capabilities(self) -> set[str]:
         return {CAP_REVIEWS}
 
+    @ttl_cache(TTL_REVIEWS)
     def get_reviews(
         self,
         app_id: str,
