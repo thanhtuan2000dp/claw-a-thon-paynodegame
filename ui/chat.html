@@ -246,15 +246,19 @@
       host.appendChild(bar);
     }
 
-    function renderExtras(host, result) {
+    function renderExtras(host, result, exportAsked) {
       if (!result || typeof result !== 'object' || result.error) return;
       try {
         renderSuggestions(host, result.suggestions);
         if (result.use_case === 'help') return;  // help has only suggestions, no charts/export
+        let chartCount = 0;
         const blocks = result.platforms ? Object.entries(result.platforms) : [['', result]];
-        blocks.forEach(([store, r]) => { if (r && !r.error) chartSpecs(r).forEach(spec => appendChart(host, spec, store)); });
-        const bar = document.createElement('div'); bar.className = 'dlbar';
+        blocks.forEach(([store, r]) => { if (r && !r.error) chartSpecs(r).forEach(spec => { appendChart(host, spec, store); chartCount++; }); });
         const tbl = tableFor(result);
+        // Offer downloads only when there's meaningful data (a table or a chart),
+        // or when the user explicitly asked to export/download.
+        if (!tbl && chartCount === 0 && !exportAsked) return;
+        const bar = document.createElement('div'); bar.className = 'dlbar';
         if (tbl) {
           const b = document.createElement('button'); b.className = 'dlbtn'; b.textContent = '⬇ CSV';
           b.onclick = () => dl((result.use_case || 'export') + '.csv',
@@ -307,7 +311,11 @@
         const data = await resp.json();
         const md = data.markdown || '```json\n' + JSON.stringify(data.result || data, null, 2) + '\n```';
         tBubble.innerHTML = marked.parse(md);
-        renderExtras(tBubble, data.result);   // charts + CSV/JSON export from the result
+        // Show export buttons only for meaningful data, or when the user asked to download.
+        const exportAsked = ['tải về', 'tải xuống', 'tải file', 'xuất file', 'xuất dữ liệu',
+          'xuất csv', 'xuất json', 'export', 'download', 'file csv', 'file json', '.csv', '.json']
+          .some(k => text.toLowerCase().includes(k));
+        renderExtras(tBubble, data.result, exportAsked);   // charts + (gated) CSV/JSON export
 
         const r = data.result || {};
         if (r.use_case === 'hypothesis_check') {
