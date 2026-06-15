@@ -154,6 +154,40 @@ def run_subscription_cycle(deps, notifier: Notifier, now: Optional[datetime] = N
     return report
 
 
+def start_background_scheduler(deps, notifier: Optional[Notifier] = None):
+    """Opt-in in-process scheduler. When ``ENABLE_SCHEDULER`` is truthy, spawn a
+    daemon thread that runs the env watchlist + user-subscription cycles every
+    ``SCHEDULER_INTERVAL_SECONDS`` (default 300) — so alerts are delivered at their
+    scheduled hour without an external cron. Returns the thread, or None when the
+    flag is unset. The ``last_sent`` guard keeps frequent polling idempotent."""
+    if (os.environ.get("ENABLE_SCHEDULER") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        return None
+    import threading
+    import time
+
+    interval = max(60, int(os.environ.get("SCHEDULER_INTERVAL_SECONDS", "300") or 300))
+    notifier = notifier or make_notifier()
+
+    def _loop():
+        logger.info("in-process scheduler on: every %ds via %s",
+                    interval, getattr(notifier, "channel", "?"))
+        while True:
+            try:
+                wl = load_watchlist()
+                if wl:
+                    run_watch_cycle(deps, notifier, wl)
+                rep = run_subscription_cycle(deps, notifier)
+                if rep.get("alerted"):
+                    logger.info("scheduler delivered %d subscription alert(s)", rep["alerted"])
+            except Exception as exc:  # noqa: BLE001 - keep the loop alive across failures
+                logger.warning("scheduler cycle error: %s", exc)
+            time.sleep(interval)
+
+    t = threading.Thread(target=_loop, name="veridex-scheduler", daemon=True)
+    t.start()
+    return t
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     try:
