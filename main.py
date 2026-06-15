@@ -85,18 +85,17 @@ def health_check() -> PingStatus:
     return PingStatus.HEALTHY
 
 
-# Optional in-process scheduler (set ENABLE_SCHEDULER=1): a daemon thread runs the
-# UC9 watch — user subscriptions + the env watchlist — on a timer, delivering alerts
-# at their scheduled hour without an external cron. Started at import so it runs both
-# under `python main.py` and when the platform imports `app`. No-op when unset, so
-# default behaviour and the health check are unchanged.
-if (os.environ.get("ENABLE_SCHEDULER") or "").strip().lower() in ("1", "true", "yes", "on"):
-    try:
-        from scheduler.watch import start_background_scheduler
-        start_background_scheduler(_router_instance().deps)
-    except Exception as _exc:  # noqa: BLE001 - the scheduler must never block boot/health
-        import logging
-        logging.getLogger("main").warning("in-process scheduler not started: %s", _exc)
+# In-process scheduler — ON by default (set ENABLE_SCHEDULER=0 to disable): a daemon
+# thread runs the UC9 watch — user subscriptions + the env watchlist — on a timer,
+# delivering alerts at their scheduled hour without an external cron. Started at import
+# so it runs both under `python main.py` and when the platform imports `app`; wrapped
+# so it can never block boot/health.
+try:
+    from scheduler.watch import start_background_scheduler
+    start_background_scheduler(_router_instance().deps)
+except Exception as _exc:  # noqa: BLE001 - the scheduler must never block boot/health
+    import logging
+    logging.getLogger("main").warning("in-process scheduler not started: %s", _exc)
 
 
 if __name__ == "__main__":

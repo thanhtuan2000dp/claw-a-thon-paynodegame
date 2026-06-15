@@ -155,12 +155,14 @@ def run_subscription_cycle(deps, notifier: Notifier, now: Optional[datetime] = N
 
 
 def start_background_scheduler(deps, notifier: Optional[Notifier] = None):
-    """Opt-in in-process scheduler. When ``ENABLE_SCHEDULER`` is truthy, spawn a
-    daemon thread that runs the env watchlist + user-subscription cycles every
-    ``SCHEDULER_INTERVAL_SECONDS`` (default 300) — so alerts are delivered at their
-    scheduled hour without an external cron. Returns the thread, or None when the
-    flag is unset. The ``last_sent`` guard keeps frequent polling idempotent."""
-    if (os.environ.get("ENABLE_SCHEDULER") or "").strip().lower() not in ("1", "true", "yes", "on"):
+    """In-process scheduler — **on by default**. Spawns a daemon thread that runs
+    the env watchlist + user-subscription cycles every ``SCHEDULER_INTERVAL_SECONDS``
+    (default 300), so alerts are delivered at their scheduled hour without an
+    external cron. Set ``ENABLE_SCHEDULER=0`` (or false/no/off) to disable it (e.g.
+    when running multiple replicas and driving the watch from a single cron instead).
+    Returns the thread, or None when disabled. The ``last_sent`` guard keeps frequent
+    polling idempotent."""
+    if (os.environ.get("ENABLE_SCHEDULER") or "").strip().lower() in ("0", "false", "no", "off"):
         return None
     import threading
     import time
