@@ -116,6 +116,15 @@ Both stores are file-backed and write under env-configurable dirs (`SNAPSHOT_DIR
 - **Persistent volume (recommended).** Point `SNAPSHOT_DIR` / `CONVERSATION_DIR` at a mounted persistent volume in the deployment. History then survives redeploys with **no code change** — the container root disk is ephemeral, a mounted volume is not.
 - **Managed backend (AgentBase Memory) — future drop-in.** The seams (`SnapshotStoreBase`, `ConversationStore`) let a Memory-backed store replace the file impls in `build_deps` without touching use cases. The Memory SDK (`greennode_agentbase.memory.MemoryClient`) is **async + IAM-authenticated** and needs a provisioned `memory_id` (`greennode memory create -e <expiry>`). Conversation turns map cleanly to `create_event_async` / `list_events_async` (one actor, `session_id` = the conversation); event expiry makes it a poor fit for long-lived time-series snapshots, so keep snapshots on a volume. Not wired yet — provision a Memory first, then implement the adapter against that resource so it can be verified live.
 
+### Scheduler & alerts (UC9)
+
+UC9 detects anomalies; the **watch** (`scheduler/`) runs it on a schedule and pushes alerts.
+
+- **Run a cycle:** `python -m scheduler` runs UC9 over the watchlist once and prints a JSON report. It's a **one-shot CLI** meant to be driven by an *external* scheduler (platform cron / k8s CronJob / unix `cron`) — e.g. `0 9 * * * cd /app && python -m scheduler` — so it never runs a timer inside the request-serving process.
+- **Watchlist:** `WATCHLIST_FILE` (path to a JSON list of `{"app","store","lang"?,"country"?}`) or `ALERT_WATCHLIST` shorthand (`"Zalo|both|vi, com.spotify.music|android"`). Empty → the cycle no-ops with a warning.
+- **Delivery (`core/alerts.py`):** Telegram when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` are set, else **dry-run** (logs the message, sends nothing) — so the watch is always safe to run without credentials. `send()` never raises; a delivery failure degrades to an `error` status and the cycle continues. Stdlib-only (`urllib`), no new dependency. `format_uc9_alert()` turns a UC9 result (single-store or cross-platform) into the message, or `None` when there's no anomaly.
+- The whole cycle is pure given `(deps, notifier, watchlist)` — `run_watch_cycle()` is unit-tested offline with a fake connector + a `DryRunNotifier` (see `tests/test_watch.py`).
+
 ## Config & secrets
 
 `.env`, `.greennode.json`, and `.agentbase/` are gitignored and contain live credentials — never commit them or echo their contents. Required LLM vars: `LLM_MODEL`, `LLM_BASE_URL`, `LLM_API_KEY` (provision via the `/agentbase-llm` skill). In production, store `SENSORTOWER_AUTH_TOKEN` via `/agentbase-identity`, not `.env`.
