@@ -74,6 +74,9 @@ class CompetitorWeaknessUseCase(UseCase):
         me = resolve_app(app_query, store, deps, country, review_lang)
         if me is None or not me.app_id:
             return {"use_case": self.name, "error": f"could not resolve app '{app_query}' on {store}"}
+        if me.country and me.country != country:
+            notes.append(f"App not found in '{country}' store — resolved on '{me.country}' instead.")
+            country = me.country
         my_name, genre_id, category = me.name, None, None
         meta_conn = deps.connector_for(CAP_METADATA, store)
         if meta_conn is not None:

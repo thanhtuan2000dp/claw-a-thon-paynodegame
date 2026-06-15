@@ -44,6 +44,13 @@ def main():
     print(f"leaders: {res['leaders']}")
     print(f"positioning (LLM): {len(res['positioning'])} | notes: {[n for n in res['notes'] if n]}")
 
+    cl = res.get("changelog", {})
+    print("\nrecent releases (changelog dimension):")
+    for r in cl.get("recency", []):
+        you = "⭐" if r["is_you"] else "  "
+        print(f"  {you} {r['name']:38} v{r.get('version')}  updated {r.get('release_date')}")
+    print(f"changelog insights (LLM): {len(cl.get('insights', []))}")
+
     assert len(rows) >= 2, "need at least your app + 1 rival"
     assert sum(1 for r in rows if r["is_you"]) == 1, "exactly one row must be your app"
     you_row = next(r for r in rows if r["is_you"])
@@ -51,7 +58,13 @@ def main():
     assert any(r.get("rank") for r in rows), "no ranks resolved"
     assert any(r.get("rating") is not None for r in rows), "no ratings resolved"
     assert res["leaders"].get("rating"), "no rating leader"
-    print("PASS: competitive comparison table + leaders built")
+    # Changelog dimension: every row carries the release fields; recency is built
+    # from whichever apps expose a release date (iTunes serves it for most).
+    assert all("release_date" in r and "release_notes" in r for r in rows), "rows missing release fields"
+    assert isinstance(cl.get("recency"), list), "changelog.recency missing"
+    if res["leaders"].get("recently_updated"):
+        assert cl["recency"], "recency leader set but recency list empty"
+    print("PASS: competitive comparison table + leaders + changelog dimension built")
 
 
 if __name__ == "__main__":

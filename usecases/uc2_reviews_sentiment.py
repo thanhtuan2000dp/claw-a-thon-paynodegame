@@ -107,6 +107,11 @@ class ReviewsSentimentUseCase(UseCase):
         app_ref = resolve_app(app_query, store, deps, review_lang, review_lang)
         if app_ref is None or not app_ref.app_id:
             return {"use_case": self.name, "error": f"could not resolve app '{app_query}' on {store}"}
+        # Use the store country the app was actually found in (resolve_app may fall
+        # back to e.g. US when it's absent from the local store).
+        country = app_ref.country or review_lang
+        if app_ref.country and app_ref.country != review_lang:
+            notes.append(f"App not found in '{review_lang}' store — resolved on '{app_ref.country}' instead.")
 
         # When resolved by a raw store id the name == id; fetch the real name (best-effort).
         display_name = app_ref.name
@@ -115,7 +120,7 @@ class ReviewsSentimentUseCase(UseCase):
             if meta_conn is not None:
                 try:
                     display_name = meta_conn.get_metadata(
-                        app_ref.app_id, store, country=review_lang, lang=review_lang
+                        app_ref.app_id, store, country=country, lang=review_lang
                     ).name or display_name
                 except ConnectorError:
                     pass
@@ -131,7 +136,7 @@ class ReviewsSentimentUseCase(UseCase):
         review_errors: list[str] = []  # only surfaced if ALL sources fail (silent fallback)
         for conn in review_conns:
             try:
-                reviews = conn.get_reviews(app_ref.app_id, store, start, end, country=review_lang, lang=review_lang)
+                reviews = conn.get_reviews(app_ref.app_id, store, start, end, country=country, lang=review_lang)
                 review_source = conn.name
                 break
             except ConnectorError as exc:
