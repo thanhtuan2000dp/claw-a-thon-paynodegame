@@ -26,24 +26,72 @@ def looks_like_id(app: str, store: str) -> bool:
     return bool(re.fullmatch(r"[a-zA-Z][\w.]+\.[\w.]+", app))
 
 
+# Stores to try when the requested country has no good match — apps are commonly
+# present in the US store even when absent from a smaller local store.
+_FALLBACK_COUNTRIES = ["us"]
+# Below this title-similarity, the local store has no real match → try a fallback.
+_GOOD_MATCH = 0.75
+
+
+def _norm(text: Optional[str]) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+def _match_score(query: str, name: str) -> float:
+    """Title-similarity in [0, 1] for ranking search hits against the query:
+    exact > prefix > fraction of query words present. Keeps the resolver from
+    picking a loosely-related app (e.g. 'Dead Trigger' for 'dead target')."""
+    q, n = _norm(query), _norm(name)
+    if not q or not n:
+        return 0.0
+    if n == q:
+        return 1.0
+    if n.startswith(q + " "):
+        return 0.9
+    qt = q.split()
+    covered = sum(1 for t in qt if t in set(n.split())) / len(qt)
+    return 0.6 * covered
+
+
 def resolve_app(
     app_query: str, store: str, deps: "Deps", country: Optional[str] = None, lang: Optional[str] = None
 ) -> Optional[AppRef]:
     """Resolve a user query (name or store id) to an ``AppRef`` for ``store``.
 
-    A store id is used as-is; otherwise the best search hit is returned (None if
-    no search connector or no match). Shared by the store-facing use cases.
+    A store id is used as-is. Otherwise search hits are **ranked by title
+    similarity** (not blindly taking the first hit), and if the requested country
+    has no good match the search **falls back to other countries** (e.g. US). The
+    returned ref carries ``country`` = the store country it was found in, so callers
+    fetch metadata/reviews from the right store. Returns None if nothing resolves.
     """
     if looks_like_id(app_query, store):
-        return AppRef(app_id=app_query, name=app_query, store=store)
+        return AppRef(app_id=app_query, name=app_query, store=store, country=country)
     search_conn = deps.connector_for(CAP_SEARCH, store)
     if search_conn is None:
         return None
-    try:
-        hits = search_conn.search_app(app_query, store, country=country, lang=lang)
-    except ConnectorError:
-        return None
-    return hits[0] if hits else None
+
+    countries: list[Optional[str]] = []
+    for c in [country, *_FALLBACK_COUNTRIES]:
+        if c not in countries:
+            countries.append(c)
+
+    best_overall: Optional[AppRef] = None
+    best_score = -1.0
+    for c in countries:
+        try:
+            hits = search_conn.search_app(app_query, store, country=c, lang=lang)
+        except ConnectorError:
+            continue
+        if not hits:
+            continue
+        best = max(hits, key=lambda h: _match_score(app_query, h.name))
+        score = _match_score(app_query, best.name)
+        best.country = c
+        if score >= _GOOD_MATCH:
+            return best  # strong match in a preferred country — stop, no extra calls
+        if score > best_score:
+            best_overall, best_score = best, score
+    return best_overall
 
 
 def snapshot_app(
@@ -61,6 +109,7 @@ def snapshot_app(
     ref = resolve_app(app_query, store, deps, country, lang)
     if ref is None or not ref.app_id:
         return None
+    country = ref.country or country  # use the store the app was actually found in
     meta_conn = deps.connector_for(CAP_METADATA, store)
     if meta_conn is None:
         return None
@@ -85,6 +134,7 @@ def snapshot_app(
         app_id=meta.app_id, store=store, version=meta.version,
         avg_rating=meta.avg_rating, rating_count=meta.rating_count,
         current_version_release_date=rel.isoformat() if rel else None, rank=rank,
+        release_notes=(meta.release_notes or "").strip()[:1000] or None,
     ))
     return {"ref": ref, "meta": meta, "rank": rank, "rank_chart": rank_chart,
             "history": deps.storage.history(meta.app_id, store)}

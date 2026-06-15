@@ -44,6 +44,10 @@ class AppRef:
     name: str
     store: Store
     publisher: Optional[str] = None
+    # Store country the app was actually resolved in. resolve_app may fall back to
+    # another country (e.g. US) when the requested one has no good match, so callers
+    # should use this for follow-up metadata/review fetches. None = caller's default.
+    country: Optional[str] = None
 
 
 @dataclass
