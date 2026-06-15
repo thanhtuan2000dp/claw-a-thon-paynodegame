@@ -31,8 +31,9 @@ _SEV_ORDER = ["high", "medium", "info"]
 
 class Notifier(ABC):
     @abstractmethod
-    def send(self, text: str) -> dict:
-        """Deliver one alert message. Returns a status dict; never raises."""
+    def send(self, text: str, chat_id: Optional[str] = None) -> dict:
+        """Deliver one alert message to ``chat_id`` (or the configured default).
+        Returns a status dict; never raises."""
 
 
 class DryRunNotifier(Notifier):
@@ -42,28 +43,34 @@ class DryRunNotifier(Notifier):
 
     def __init__(self, reason: str = ""):
         self.reason = reason
-        self.sent: list[str] = []  # captured for tests / introspection
+        self.sent: list[tuple[str, Optional[str]]] = []  # (text, chat_id) for tests
 
-    def send(self, text: str) -> dict:
-        self.sent.append(text)
-        logger.info("[alert dry-run] %s", text.replace("\n", " | "))
+    def send(self, text: str, chat_id: Optional[str] = None) -> dict:
+        self.sent.append((text, chat_id))
+        logger.info("[alert dry-run → %s] %s", chat_id or "-", text.replace("\n", " | "))
         return {"channel": self.channel, "status": "dry_run", "reason": self.reason}
 
 
 class TelegramNotifier(Notifier):
-    """Sends via Telegram Bot ``sendMessage``. ``transport`` is injectable for tests."""
+    """Sends via Telegram Bot ``sendMessage``. The bot ``token`` is the shared
+    server secret; ``chat_id`` is the per-recipient destination — passed per
+    ``send`` (subscriptions) or falling back to the instance default (global
+    watchlist). ``transport`` is injectable for tests."""
 
     channel = "telegram"
 
-    def __init__(self, token: str, chat_id: str, parse_mode: str = "",
+    def __init__(self, token: str, chat_id: str = "", parse_mode: str = "",
                  transport: Optional[Callable[[str, dict], None]] = None):
         self.token = token
-        self.chat_id = chat_id
-        self.parse_mode = parse_mode  # "" = plain text (no escaping pitfalls)
+        self.chat_id = chat_id          # default destination (global watchlist)
+        self.parse_mode = parse_mode    # "" = plain text (no escaping pitfalls)
         self._transport = transport or _http_post_json
 
-    def send(self, text: str) -> dict:
-        payload = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+    def send(self, text: str, chat_id: Optional[str] = None) -> dict:
+        dest = (chat_id or self.chat_id or "").strip()
+        if not dest:
+            return {"channel": self.channel, "status": "error", "error": "no chat_id"}
+        payload = {"chat_id": dest, "text": text, "disable_web_page_preview": True}
         if self.parse_mode:
             payload["parse_mode"] = self.parse_mode
         try:
@@ -84,15 +91,17 @@ def _http_post_json(url: str, payload: dict) -> None:
 
 
 def make_notifier(env: Optional[dict] = None) -> Notifier:
-    """Telegram when both creds are present, else a dry-run notifier that names
-    what's missing (so the watch is always runnable)."""
+    """Telegram when the bot token is present, else a dry-run notifier.
+
+    The token is all that's required: per-subscription delivery supplies its own
+    ``chat_id`` at ``send`` time. ``TELEGRAM_CHAT_ID`` only sets the default
+    destination for the global env watchlist."""
     env = env if env is not None else os.environ
     token = (env.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = (env.get("TELEGRAM_CHAT_ID") or "").strip()
-    if token and chat_id:
+    if token:
         return TelegramNotifier(token, chat_id, parse_mode=(env.get("ALERT_PARSE_MODE") or "").strip())
-    missing = [n for n, v in (("TELEGRAM_BOT_TOKEN", token), ("TELEGRAM_CHAT_ID", chat_id)) if not v]
-    return DryRunNotifier(reason="not set: " + ", ".join(missing))
+    return DryRunNotifier(reason="not set: TELEGRAM_BOT_TOKEN")
 
 
 # --------------------------------------------------------------------------

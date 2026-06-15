@@ -48,14 +48,74 @@
     .dlbar { display: flex; gap: 8px; margin-top: 10px; }
     .dlbtn { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
     .dlbtn:hover { border-color: var(--accent); }
+    .hbtn { margin-left: auto; background: var(--panel); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+    .hbtn:hover { border-color: var(--accent); }
+    .apanel { border-bottom: 1px solid var(--border); background: #121826; padding: 16px 24px; }
+    .apanel .inner { max-width: 900px; margin: 0 auto; }
+    .apanel h3 { font-size: 13px; color: #93c5fd; margin-bottom: 10px; }
+    .arow { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+    .afield { display: flex; flex-direction: column; gap: 4px; }
+    .afield label { font-size: 11px; color: var(--muted); }
+    .apanel input, .apanel select { background: #0f1117; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+    .apanel input:focus, .apanel select:focus { outline: none; border-color: var(--accent); }
+    .abtn { background: var(--accent); color: #04130a; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; font-size: 13px; }
+    .abtn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--border); font-weight: 600; }
+    .asub { font-size: 12px; color: var(--muted); margin: 6px 0; }
+    #subStatus { font-size: 12px; min-height: 16px; }
+    .subrow { display: flex; align-items: center; gap: 10px; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: 13px; }
   </style>
 </head>
 <body>
   <header>
     <span class="dot"></span>
     <h1>App Intelligence Agent</h1>
-    <span class="sub" id="mode">Release Health · Hypothesis Checker</span>
+    <button id="alertsBtn" class="hbtn" onclick="toggleAlerts()">🔔 Cảnh báo</button>
+    <span class="sub" id="mode" style="margin-left:12px">Release Health · Hypothesis Checker</span>
   </header>
+
+  <section id="alertsPanel" class="apanel" style="display:none">
+    <div class="inner">
+      <h3>🔔 Đăng ký cảnh báo qua Telegram</h3>
+      <div class="asub">Nhận cảnh báo bất thường (rating/rank/version) của app vào Telegram của bạn. Chỉ cần <b>chat ID</b> — token bot do hệ thống giữ.</div>
+      <div class="arow">
+        <div class="afield" style="flex:1; min-width:180px">
+          <label>Telegram chat ID</label>
+          <input id="subChat" placeholder="vd 987654321" />
+        </div>
+        <div class="afield" style="flex:1; min-width:160px">
+          <label>App (tên hoặc store id)</label>
+          <input id="subApp" placeholder="vd zalopay" />
+        </div>
+        <div class="afield">
+          <label>Store</label>
+          <select id="subStore"><option value="ios">iOS</option><option value="android">Android</option><option value="both">Cả hai</option></select>
+        </div>
+        <div class="afield">
+          <label>Ngôn ngữ</label>
+          <select id="subLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
+        </div>
+      </div>
+      <div class="arow">
+        <div class="afield">
+          <label>Tần suất</label>
+          <select id="subFreq" onchange="subFreqChange()"><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần</option></select>
+        </div>
+        <div class="afield" id="weekdayRow" style="display:none">
+          <label>Thứ</label>
+          <select id="subWeekday"></select>
+        </div>
+        <div class="afield">
+          <label>Giờ nhận</label>
+          <select id="subHour"></select>
+        </div>
+        <button class="abtn" onclick="subSave()">Lưu đăng ký</button>
+        <button class="abtn ghost" onclick="subTest()">Gửi thử</button>
+        <button class="abtn ghost" onclick="subList()">Đăng ký của tôi</button>
+      </div>
+      <div id="subStatus"></div>
+      <div id="subListBox"></div>
+    </div>
+  </section>
 
   <div id="messages"></div>
 
@@ -251,6 +311,83 @@
         send();
       }
     });
+
+    // ---- Alerts panel (per-user Telegram subscriptions) ----
+    const _pad = n => String(n).padStart(2, '0');
+    const _esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const _DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+    function toggleAlerts() {
+      const p = document.getElementById('alertsPanel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    }
+    function subFreqChange() {
+      document.getElementById('weekdayRow').style.display =
+        document.getElementById('subFreq').value === 'weekly' ? 'flex' : 'none';
+    }
+    function _val(id) { return document.getElementById(id).value.trim(); }
+    function _subStatus(msg, ok) {
+      const s = document.getElementById('subStatus');
+      s.textContent = msg || '';
+      s.style.color = ok === false ? '#f87171' : '#22c55e';
+    }
+    async function subCall(params) {
+      const resp = await fetch('/invocations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GreenNode-AgentBase-Session-Id': sessionId,
+          'X-GreenNode-AgentBase-User-Id': 'web-user',
+        },
+        body: JSON.stringify({ action: 'manage_subscription', params }),
+      });
+      const data = await resp.json();
+      return data.result || data;
+    }
+    function _subFields() {
+      return { chat_id: _val('subChat'), app: _val('subApp'), store: _val('subStore'),
+               freq: _val('subFreq'), hour: _val('subHour'), weekday: _val('subWeekday'), lang: _val('subLang') };
+    }
+    async function subSave() {
+      const f = _subFields();
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', false);
+      if (!f.app) return _subStatus('Nhập app', false);
+      const r = await subCall({ op: 'create', ...f });
+      _subStatus(r.message || r.error, r.status === 'success');
+      if (r.status === 'success') subList();
+    }
+    async function subTest() {
+      const f = _subFields();
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', false);
+      const r = await subCall({ op: 'test', chat_id: f.chat_id, app: f.app, lang: f.lang });
+      _subStatus(r.message || r.error, r.status === 'success');
+    }
+    async function subList() {
+      const chat = _val('subChat');
+      if (!chat) return _subStatus('Nhập Telegram chat ID để xem đăng ký', false);
+      const r = await subCall({ op: 'list', chat_id: chat });
+      const box = document.getElementById('subListBox');
+      const subs = r.subscriptions || [];
+      _subStatus(r.message || '', true);
+      if (!subs.length) { box.innerHTML = '<div class="asub">Chưa có đăng ký.</div>'; return; }
+      box.innerHTML = subs.map(s => {
+        const when = s.freq === 'weekly'
+          ? (_DAYS[(s.weekday ?? 0)] + ' ' + _pad(s.hour) + ':00')
+          : ('hằng ngày ' + _pad(s.hour) + ':00');
+        return `<div class="subrow"><span>${_esc(s.app)} · ${s.store} · ${when}</span>`
+             + `<button class="dlbtn" onclick="subDelete('${s.id}','${_esc(chat)}')">Xoá</button></div>`;
+      }).join('');
+    }
+    async function subDelete(id, chat) {
+      const r = await subCall({ op: 'delete', id, chat_id: chat });
+      _subStatus(r.message || r.error, r.status === 'success');
+      subList();
+    }
+    // Populate hour (0-23, default 9) + weekday selects.
+    document.getElementById('subHour').innerHTML =
+      Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === 9 ? ' selected' : ''}>${_pad(h)}:00</option>`).join('');
+    document.getElementById('subWeekday').innerHTML =
+      _DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
 
     bubble('bot', marked.parse(
       '**Xin chào! Tôi là App Intelligence Agent (AI).**\n\n' +

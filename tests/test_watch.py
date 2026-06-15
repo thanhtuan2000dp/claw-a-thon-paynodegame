@@ -23,7 +23,7 @@ from storage.snapshots import Snapshot, SnapshotStore  # noqa: E402
 def test_make_notifier_dry_run_when_unconfigured():
     n = make_notifier({})
     assert isinstance(n, DryRunNotifier)
-    assert "TELEGRAM_BOT_TOKEN" in n.reason and "TELEGRAM_CHAT_ID" in n.reason
+    assert "TELEGRAM_BOT_TOKEN" in n.reason
 
 
 def test_make_notifier_telegram_when_configured():
@@ -107,7 +107,7 @@ def test_watch_cycle_delivers_on_alert():
                              [{"app": "999", "store": "ios", "lang": "vi"}])
     assert report["alerted"] == 1
     assert report["results"][0]["uc_status"] == "alert"
-    assert len(notifier.sent) == 1 and "Rating" in notifier.sent[0]
+    assert len(notifier.sent) == 1 and "Rating" in notifier.sent[0][0]
 
 
 def test_watch_cycle_no_delivery_on_baseline():

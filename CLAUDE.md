@@ -122,8 +122,17 @@ UC9 detects anomalies; the **watch** (`scheduler/`) runs it on a schedule and pu
 
 - **Run a cycle:** `python -m scheduler` runs UC9 over the watchlist once and prints a JSON report. It's a **one-shot CLI** meant to be driven by an *external* scheduler (platform cron / k8s CronJob / unix `cron`) — e.g. `0 9 * * * cd /app && python -m scheduler` — so it never runs a timer inside the request-serving process.
 - **Watchlist:** `WATCHLIST_FILE` (path to a JSON list of `{"app","store","lang"?,"country"?}`) or `ALERT_WATCHLIST` shorthand (`"Zalo|both|vi, com.spotify.music|android"`). Empty → the cycle no-ops with a warning.
-- **Delivery (`core/alerts.py`):** Telegram when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` are set, else **dry-run** (logs the message, sends nothing) — so the watch is always safe to run without credentials. `send()` never raises; a delivery failure degrades to an `error` status and the cycle continues. Stdlib-only (`urllib`), no new dependency. `format_uc9_alert()` turns a UC9 result (single-store or cross-platform) into the message, or `None` when there's no anomaly.
+- **Delivery (`core/alerts.py`):** Telegram when `TELEGRAM_BOT_TOKEN` is set, else **dry-run** (logs the message, sends nothing) — so the watch is always safe to run without credentials. The bot token is the shared server secret; the **`chat_id` is per-recipient** — `Notifier.send(text, chat_id=None)` takes it per call (subscriptions) or falls back to the instance default (`TELEGRAM_CHAT_ID`, the global watchlist). `send()` never raises; a delivery failure degrades to an `error` status and the cycle continues. Stdlib-only (`urllib`), no new dependency. `format_uc9_alert()` turns a UC9 result (single-store or cross-platform) into the message, or `None` when there's no anomaly.
 - The whole cycle is pure given `(deps, notifier, watchlist)` — `run_watch_cycle()` is unit-tested offline with a fake connector + a `DryRunNotifier` (see `tests/test_watch.py`).
+
+### Per-user alert subscriptions
+
+End-users self-register *which app's* UC9 alerts go to *their* Telegram chat on *what schedule* — without ever touching the bot token.
+
+- **Surface:** the chat UI's **🔔 Cảnh báo** panel (`ui/chat.html`) posts `{action:"manage_subscription", params:{op,…}}` to the existing `/invocations` (no new endpoint). `usecases/manage_subscription.py` handles `op` = `create` | `list` | `delete` | `test` (test does a live delivery so the user can confirm their chat). All ops require `chat_id`.
+- **Identity = `chat_id`** (self-serve, no auth). Telegram refuses delivery to anyone who hasn't `/start`-ed the bot, so you can't push to strangers; caps `ALERT_MAX_SUBS` (default 200) / `ALERT_MAX_SUBS_PER_CHAT` (default 20) bound abuse. `list`/`delete` are scoped to the caller's `chat_id`.
+- **Store (`storage/subscriptions.py`):** `SubscriptionStore` (one JSON file under `SUBSCRIPTION_DIR`, default `data/subscriptions`) behind the `SubscriptionStoreBase` seam; durable on a volume like snapshots. Reaches use cases via `deps.subscriptions`.
+- **Schedule = fixed slots:** daily at `hour`, or weekly on `weekday` (0=Mon) at `hour`, evaluated in `ALERT_TZ` (default `Asia/Ho_Chi_Minh`). The cron runs **hourly** (`0 * * * * … python -m scheduler`); `due_subscriptions()` selects what's due and a `last_sent` date guard makes delivery idempotent no matter how often cron fires. `main()` runs **both** the global env watchlist and due subscriptions; `scheduler/` now calls `load_dotenv()` so cron reads `.env` like the server.
 
 ## Config & secrets
 
