@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**App Intelligence Agent** — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals into product decisions. It ships several use cases from the "AI Agent UseCases" sheet — store-metadata crawl (sheet UC1 = `uc1_store_metadata`), reviews & sentiment (sheet UC2 = `uc2_reviews_sentiment`), and a post-release health check (sheet UC6 = `uc6_version_impact`) — plus a standalone Hypothesis Checker that stress-tests an executive's claim against the data (not part of the sheet).
+**Veridex** (App Intelligence Agent) — a GreenNode AgentBase agent (Claw-a-thon 2026, Automation & Integration track) that turns public app-store signals into product decisions. It ships many use cases from the "AI Agent UseCases" sheet (see the sheet↔code mapping below) — e.g. store-metadata crawl (sheet UC1 = `uc1_store_metadata`), reviews & sentiment (sheet UC2 = `uc2_reviews_sentiment`), a post-release health check (sheet UC6 = `uc6_version_impact`) — plus a standalone Hypothesis Checker that stress-tests an executive's claim against the data (not part of the sheet) and per-user Telegram alert subscriptions for UC9.
 
 It is a Starlette-based HTTP service wrapped by `greennode-agentbase`: `GET /health`, `GET /` (chat UI), `POST /invocations`.
 

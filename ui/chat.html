@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>App Intelligence Agent</title>
+  <title>Veridex — App Intelligence Agent</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -32,16 +32,12 @@
     .bubble ul { margin: 6px 0 6px 18px; }
     .bubble em { color: var(--muted); }
     .typing { color: var(--muted); font-size: 13px; }
-    .chips { max-width: 900px; margin: 0 auto 8px; padding: 0 24px; display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
-    .chip { background: var(--panel); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; }
-    .chip:hover { border-color: var(--accent); }
     footer { padding: 16px 24px 22px; border-top: 1px solid var(--border); }
     .inputbar { max-width: 900px; margin: 0 auto; display: flex; gap: 10px; }
     #input { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 16px; font-size: 14px; resize: none; font-family: inherit; }
     #input:focus { outline: none; border-color: var(--accent); }
     #send { background: var(--accent); color: #04130a; border: none; border-radius: 10px; padding: 0 22px; font-weight: 700; cursor: pointer; font-size: 14px; }
     #send:disabled { opacity: .5; cursor: not-allowed; }
-    .hint { max-width: 900px; margin: 8px auto 0; font-size: 11px; color: var(--muted); text-align: center; }
     .chartbox { background: #0f1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
     .chartcap { font-size: 12px; color: #93c5fd; margin-bottom: 6px; }
     .chartbox canvas { max-height: 240px; }
@@ -63,14 +59,26 @@
     .asub { font-size: 12px; color: var(--muted); margin: 6px 0; }
     #subStatus { font-size: 12px; min-height: 16px; }
     .subrow { display: flex; align-items: center; gap: 10px; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: 13px; }
+    .abtn:disabled { opacity: .6; cursor: progress; }
+    .spinner { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
+               border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+               animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeInUp .25s ease both; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .subrow.removing { animation: rowOut .2s ease forwards; }
+    @keyframes rowOut { to { opacity: 0; transform: translateX(10px); } }
+    .apanel.open { animation: slideDown .22s ease; }
+    @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .spinner, .fade-in, .subrow.removing, .apanel.open { animation: none; } }
   </style>
 </head>
 <body>
   <header>
     <span class="dot"></span>
-    <h1>App Intelligence Agent</h1>
+    <h1>Veridex</h1>
     <button id="alertsBtn" class="hbtn" onclick="toggleAlerts()">🔔 Cảnh báo</button>
-    <span class="sub" id="mode" style="margin-left:12px">Release Health · Hypothesis Checker</span>
+    <span class="sub" id="mode" style="margin-left:12px">App Store &amp; Google Play · hỏi tự nhiên (VI/EN)</span>
   </header>
 
   <section id="alertsPanel" class="apanel" style="display:none">
@@ -108,9 +116,9 @@
           <label>Giờ nhận</label>
           <select id="subHour"></select>
         </div>
-        <button class="abtn" onclick="subSave()">Lưu đăng ký</button>
-        <button class="abtn ghost" onclick="subTest()">Gửi thử</button>
-        <button class="abtn ghost" onclick="subList()">Đăng ký của tôi</button>
+        <button class="abtn" onclick="subSave(this)">Lưu đăng ký</button>
+        <button class="abtn ghost" onclick="subTest(this)">Gửi thử</button>
+        <button class="abtn ghost" onclick="subList(this)">Đăng ký của tôi</button>
       </div>
       <div id="subStatus"></div>
       <div id="subListBox"></div>
@@ -121,7 +129,7 @@
 
   <footer>
     <div class="inputbar">
-      <textarea id="input" rows="1" placeholder="Hỏi về sức khỏe bản cập nhật, hoặc nêu một giả thuyết để kiểm chứng…"></textarea>
+      <textarea id="input" rows="1" placeholder="Hỏi về một app: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
       <button id="send" onclick="send()">Gửi</button>
     </div>
   </footer>
@@ -143,7 +151,6 @@
       return wrap;
     }
 
-    function fill(text) { inputEl.value = text; inputEl.focus(); }
 
     // ---- charts + export (front-end only, from the JSON result) ----
     function chartSpecs(r) {
@@ -319,69 +326,104 @@
 
     function toggleAlerts() {
       const p = document.getElementById('alertsPanel');
-      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      const open = p.style.display === 'none';
+      p.style.display = open ? 'block' : 'none';
+      if (open) { p.classList.remove('open'); void p.offsetWidth; p.classList.add('open'); }
     }
     function subFreqChange() {
       document.getElementById('weekdayRow').style.display =
         document.getElementById('subFreq').value === 'weekly' ? 'flex' : 'none';
     }
     function _val(id) { return document.getElementById(id).value.trim(); }
-    function _subStatus(msg, ok) {
+    // kind: 'ok' (green ✓) | 'err' (red ✗) | 'info' (amber ⓘ)
+    function _subStatus(msg, kind) {
       const s = document.getElementById('subStatus');
-      s.textContent = msg || '';
-      s.style.color = ok === false ? '#f87171' : '#22c55e';
+      if (!msg) { s.textContent = ''; return; }
+      const icon = kind === 'err' ? '✗ ' : kind === 'info' ? 'ⓘ ' : '✓ ';
+      s.textContent = icon + msg;
+      s.style.color = kind === 'err' ? '#f87171' : kind === 'info' ? '#fbbf24' : '#22c55e';
+      s.classList.remove('fade-in'); void s.offsetWidth; s.classList.add('fade-in');  // retrigger
+    }
+    // Disable + spinner on the clicked button while its request is in flight.
+    async function _busy(btn, label, fn) {
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span>${label}`;
+      try { return await fn(); }
+      finally { btn.disabled = false; btn.innerHTML = orig; }
     }
     async function subCall(params) {
-      const resp = await fetch('/invocations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-GreenNode-AgentBase-Session-Id': sessionId,
-          'X-GreenNode-AgentBase-User-Id': 'web-user',
-        },
-        body: JSON.stringify({ action: 'manage_subscription', params }),
-      });
-      const data = await resp.json();
-      return data.result || data;
+      try {
+        const resp = await fetch('/invocations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-GreenNode-AgentBase-Session-Id': sessionId,
+            'X-GreenNode-AgentBase-User-Id': 'web-user',
+          },
+          body: JSON.stringify({ action: 'manage_subscription', params }),
+        });
+        const data = await resp.json();
+        return data.result || data;
+      } catch (e) {
+        return { status: 'error', error: 'Lỗi kết nối agent', _neterr: true };
+      }
     }
     function _subFields() {
       return { chat_id: _val('subChat'), app: _val('subApp'), store: _val('subStore'),
                freq: _val('subFreq'), hour: _val('subHour'), weekday: _val('subWeekday'), lang: _val('subLang') };
     }
-    async function subSave() {
-      const f = _subFields();
-      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', false);
-      if (!f.app) return _subStatus('Nhập app', false);
-      const r = await subCall({ op: 'create', ...f });
-      _subStatus(r.message || r.error, r.status === 'success');
-      if (r.status === 'success') subList();
+    function _loadList(chat) {
+      return subCall({ op: 'list', chat_id: chat }).then(r => {
+        const box = document.getElementById('subListBox');
+        const subs = r.subscriptions || [];
+        if (!subs.length) { box.innerHTML = '<div class="asub fade-in">Chưa có đăng ký nào.</div>'; return r; }
+        box.innerHTML = subs.map((s, i) => {
+          const when = s.freq === 'weekly'
+            ? (_DAYS[(s.weekday ?? 0)] + ' ' + _pad(s.hour) + ':00')
+            : ('hằng ngày ' + _pad(s.hour) + ':00');
+          return `<div class="subrow fade-in" style="animation-delay:${i * 40}ms"><span>${_esc(s.app)} · ${s.store} · ${when}</span>`
+               + `<button class="dlbtn" onclick="subDelete(this,'${s.id}','${_esc(chat)}')">Xoá</button></div>`;
+        }).join('');
+        return r;
+      });
     }
-    async function subTest() {
+    async function subSave(btn) {
       const f = _subFields();
-      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', false);
-      const r = await subCall({ op: 'test', chat_id: f.chat_id, app: f.app, lang: f.lang });
-      _subStatus(r.message || r.error, r.status === 'success');
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', 'err');
+      if (!f.app) return _subStatus('Nhập app', 'err');
+      await _busy(btn, 'Đang lưu…', async () => {
+        const r = await subCall({ op: 'create', ...f });
+        _subStatus(r.message || r.error, r.status === 'success' ? 'ok' : 'err');
+        if (r.status === 'success') { document.getElementById('subApp').value = ''; await _loadList(f.chat_id); }
+      });
     }
-    async function subList() {
+    async function subTest(btn) {
+      const f = _subFields();
+      if (!f.chat_id) return _subStatus('Nhập Telegram chat ID', 'err');
+      await _busy(btn, 'Đang gửi…', async () => {
+        const r = await subCall({ op: 'test', chat_id: f.chat_id, app: f.app, lang: f.lang });
+        const d = (r.delivery || {}).status;
+        const kind = d === 'sent' ? 'ok' : d === 'dry_run' ? 'info' : 'err';
+        _subStatus(r.message || r.error, kind);
+      });
+    }
+    async function subList(btn) {
       const chat = _val('subChat');
-      if (!chat) return _subStatus('Nhập Telegram chat ID để xem đăng ký', false);
-      const r = await subCall({ op: 'list', chat_id: chat });
-      const box = document.getElementById('subListBox');
-      const subs = r.subscriptions || [];
-      _subStatus(r.message || '', true);
-      if (!subs.length) { box.innerHTML = '<div class="asub">Chưa có đăng ký.</div>'; return; }
-      box.innerHTML = subs.map(s => {
-        const when = s.freq === 'weekly'
-          ? (_DAYS[(s.weekday ?? 0)] + ' ' + _pad(s.hour) + ':00')
-          : ('hằng ngày ' + _pad(s.hour) + ':00');
-        return `<div class="subrow"><span>${_esc(s.app)} · ${s.store} · ${when}</span>`
-             + `<button class="dlbtn" onclick="subDelete('${s.id}','${_esc(chat)}')">Xoá</button></div>`;
-      }).join('');
+      if (!chat) return _subStatus('Nhập Telegram chat ID để xem đăng ký', 'err');
+      await _busy(btn, 'Đang tải…', async () => {
+        const r = await _loadList(chat);
+        _subStatus(r.message || '', 'ok');
+      });
     }
-    async function subDelete(id, chat) {
-      const r = await subCall({ op: 'delete', id, chat_id: chat });
-      _subStatus(r.message || r.error, r.status === 'success');
-      subList();
+    async function subDelete(btn, id, chat) {
+      const row = btn.closest('.subrow');
+      if (row) row.classList.add('removing');
+      await _busy(btn, '…', async () => {
+        const r = await subCall({ op: 'delete', id, chat_id: chat });
+        _subStatus(r.message || r.error, r.status === 'success' ? 'ok' : 'err');
+        await _loadList(chat);
+      });
     }
     // Populate hour (0-23, default 9) + weekday selects.
     document.getElementById('subHour').innerHTML =
@@ -390,10 +432,14 @@
       _DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
 
     bubble('bot', marked.parse(
-      '**Xin chào! Tôi là App Intelligence Agent (AI).**\n\n' +
-      '- 📊 **Release Health**: "kiểm tra sức khỏe bản cập nhật của <app>"\n' +
-      '- 🔬 **Hypothesis Checker**: nêu một giả thuyết, tôi sẽ hỏi lại rồi kiểm chứng bằng dữ liệu\n\n' +
-      'Nhập câu hỏi vào ô bên dưới để bắt đầu.'
+      '**Veridex — App Intelligence Agent**\n\n' +
+      'Biến tín hiệu công khai trên App Store / Google Play (metadata, review, rating, rank) thành quyết định sản phẩm có dẫn chứng. Hỏi tự nhiên bằng Tiếng Việt hoặc English.\n\n' +
+      'Tôi làm được: thông tin & xếp hạng store · review & cảm xúc · KPI/xu hướng · tác động bản cập nhật · so sánh & điểm yếu đối thủ · cảnh báo bất thường · hỏi đáp tổng hợp · kiểm chứng giả thuyết.\n\n' +
+      '**Ví dụ:**\n' +
+      '- "review gần đây của Zalo nói gì?"\n' +
+      '- "ZaloPay so với đối thủ cùng nhóm thế nào?"\n' +
+      '- "MoMo có dấu hiệu bất thường không?"\n\n' +
+      '🔔 Muốn nhận cảnh báo qua Telegram? Bấm **Cảnh báo** ở góc trên.'
     ));
   </script>
 </body>
