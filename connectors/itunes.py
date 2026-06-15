@@ -39,6 +39,26 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _primary_genre_id(a: dict) -> Optional[str]:
+    """The app's most specific genre id for category operations.
+
+    Games report ``primaryGenreId=6014`` ("Games"), the broad parent — using it for
+    competitor discovery returns the whole top-games chart (puzzle/casual hits),
+    not same-type rivals. The real gameplay subgenre (Action 7001, Adventure 7002,
+    … — the 7xxx range) lives in ``genreIds``, so for games prefer the first such
+    subgenre (matches the sub-category Apple shows on the store page). Non-games
+    (Finance 6015, Social 6005, …) already carry a specific primaryGenreId."""
+    primary = a.get("primaryGenreId")
+    ids = [str(g) for g in (a.get("genreIds") or [])]
+    if str(primary) == "6014":  # Games parent — refine to the specific game subgenre
+        sub = next((g for g in ids if g.startswith("70")), None)
+        if sub:
+            return sub
+    if primary is not None:
+        return str(primary)
+    return ids[0] if ids else None
+
+
 class ItunesConnector(AppDataConnector):
     name = "itunes"
     stores = {"ios"}
@@ -96,8 +116,7 @@ class ItunesConnector(AppDataConnector):
             release_notes=a.get("releaseNotes"),
             publisher=a.get("sellerName"),
             category=a.get("primaryGenreName"),
-            genre_id=(str(a["primaryGenreId"]) if a.get("primaryGenreId") is not None
-                      else (a.get("genreIds") or [None])[0]),
+            genre_id=_primary_genre_id(a),
             price=a.get("formattedPrice")
             or (str(a.get("price")) if a.get("price") is not None else None),
             icon_url=a.get("artworkUrl512") or a.get("artworkUrl100") or a.get("artworkUrl60"),

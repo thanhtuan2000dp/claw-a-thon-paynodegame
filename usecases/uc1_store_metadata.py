@@ -99,6 +99,9 @@ class StoreMetadataUseCase(UseCase):
         app_ref = resolve_app(app_query, store, deps, country, lang)
         if app_ref is None or not app_ref.app_id:
             return {"use_case": self.name, "error": f"could not resolve app '{app_query}' on {store}"}
+        if app_ref.country and app_ref.country != country:
+            notes.append(f"App not found in '{country}' store — resolved on '{app_ref.country}' instead.")
+            country = app_ref.country
 
         meta_conn = deps.connector_for(CAP_METADATA, store)
         if meta_conn is None:
@@ -151,6 +154,7 @@ class StoreMetadataUseCase(UseCase):
                 rating_count=meta.rating_count,
                 current_version_release_date=release_dt.isoformat() if release_dt else None,
                 rank=rank,
+                release_notes=(meta.release_notes or "").strip()[:1000] or None,
             )
         )
         history = deps.storage.history(meta.app_id, store)

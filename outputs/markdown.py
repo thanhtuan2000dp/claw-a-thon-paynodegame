@@ -64,6 +64,9 @@ class MarkdownOutput(OutputChannel):
         if uc == "uc2_reviews_sentiment":
             return self._render_cross(result, self._render_reviews_single, "💬", "Reviews & sentiment", "Review & sentiment") \
                 if result.get("mode") == "cross_platform" else self._render_reviews_single(result)
+        if uc == "uc3_version_changelog":
+            return self._render_cross(result, self._render_uc3_single, "🗒️", "Version changelog", "Lịch sử phiên bản") \
+                if result.get("mode") == "cross_platform" else self._render_uc3_single(result)
         if uc == "uc7_competitive_comparison":
             return self._render_uc7(result)
         if uc == "uc8_competitor_weakness":
@@ -385,6 +388,41 @@ class MarkdownOutput(OutputChannel):
             lines += [f"- {icon.get(a.get('severity'), '•')} {a.get('message')}" for a in alerts]
         else:
             lines += ["", f"✅ {r.get('summary', '')}"]
+        return "\n".join(lines)
+
+    # ---- sheet UC3: version changelog timeline ----
+    def _render_uc3_single(self, r: dict) -> str:
+        vi = r.get("lang", "en") == "vi"
+        app = r.get("app", {})
+        L = {
+            "title": "Lịch sử phiên bản" if vi else "Version changelog",
+            "current": "Hiện tại" if vi else "Current",
+            "released": "phát hành" if vi else "released",
+            "no_notes": "_(store không kèm release notes)_" if vi else "_(no release notes on the store)_",
+            "highlights": "✨ Điểm nổi bật qua các bản" if vi else "✨ Highlights across versions",
+            "versions": "📜 Các phiên bản (mới nhất trước)" if vi else "📜 Versions (newest first)",
+            "notes": "Ghi chú" if vi else "Notes", "summary": "Tóm tắt" if vi else "Summary",
+        }
+        lines = [f"## 🗒️ {L['title']} — {app.get('name', '?')} ({app.get('store', '')})", ""]
+        lines.append(f"**{L['current']}:** `v{r.get('current_version') or '?'}`")
+        versions = r.get("versions", [])
+        if versions:
+            lines += ["", f"### {L['versions']}"]
+            for v in versions:
+                rel = v.get("release_date") or v.get("first_seen")
+                rel = str(rel).split("T")[0] if rel else "?"
+                lines.append(f"- **v{v.get('version', '?')}** · {L['released']} {rel}")
+                notes = v.get("release_notes")
+                lines.append(f"  - _{notes}_" if notes else f"  - {L['no_notes']}")
+        hl = r.get("highlights", [])
+        if hl:
+            lines += ["", f"### {L['highlights']}"] + [f"- {h}" for h in hl]
+        if r.get("notes"):
+            real = [n for n in r["notes"] if n]
+            if real:
+                lines += ["", f"### {L['notes']}"] + [f"- {n}" for n in real]
+        if r.get("summary"):
+            lines += ["", f"### {L['summary']}", r["summary"]]
         return "\n".join(lines)
 
     # ---- sheet UC7: competitive comparison ----

@@ -190,6 +190,7 @@ class VersionImpactUseCase(UseCase):
                     if meta.current_version_release_date
                     else None
                 ),
+                release_notes=(meta.release_notes or "").strip()[:1000] or None,
             )
         )
 

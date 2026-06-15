@@ -25,6 +25,11 @@ class Snapshot:
     rating_count: Optional[int] = None
     current_version_release_date: Optional[str] = None
     rank: Optional[int] = None  # top-chart position (sheet UC1); None = not in chart
+    # Current version's store changelog at capture time. Stores expose only the
+    # latest version's notes, so accruing them per snapshot is how the agent builds
+    # a per-version changelog history for free (sheet UC3). Optional + defaulted so
+    # older snapshot lines (written before this field) still load.
+    release_notes: Optional[str] = None
 
 
 class SnapshotStore:
