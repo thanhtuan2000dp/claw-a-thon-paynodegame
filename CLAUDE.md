@@ -26,9 +26,14 @@ python main.py
 ./venv/bin/python tests/verify_uc2_reviews_sentiment.py      # sheet UC2 reviews & sentiment (live)
 ./venv/bin/python tests/test_hypothesis.py      # Hypothesis Checker multi-turn run
 ./venv/bin/python tests/verify_sensortower.py   # probe Sensor Tower endpoints with your token (never prints the token)
+
+# Offline suite + lint (no network/LLM) — what CI runs:
+pip install -r requirements-dev.txt   # pytest + ruff + httpx, no greennode-agentbase
+ruff check .                          # pyflakes (select = ["F"]); config in pyproject.toml
+pytest                                # tests/test_*.py only — fast, deterministic, mocked
 ```
 
-There is no test runner config, linter, or build step — tests are plain `python` scripts with `if __name__ == "__main__"` entrypoints, not pytest. Add `--no-live` style flags inside the script when a test needs an offline mode.
+Two test tiers: **`test_*.py`** are offline unit tests (mocked connectors, no network/LLM) — collected by pytest and run in CI (`.github/workflows/ci.yml`). **`verify_*.py`** are live smoke scripts with `if __name__ == "__main__"` entrypoints (hit real stores/LLM); they are *not* pytest-collected. Add an offline `test_*.py` for any new deterministic logic so it is covered by CI.
 
 ### Invoking the agent
 

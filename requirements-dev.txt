@@ -1,0 +1,7 @@
+# Dev/test tooling (not needed at runtime). Install: pip install -r requirements-dev.txt
+# Deliberately NOT pulling requirements.txt: the offline test suite only needs httpx
+# (greennode-agentbase / langchain / google-play-scraper are import-lazy or main-only),
+# so CI stays installable without the platform package.
+pytest>=8.0
+ruff>=0.5
+httpx>=0.27

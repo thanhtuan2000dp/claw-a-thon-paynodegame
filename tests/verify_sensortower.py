@@ -32,16 +32,16 @@ TOKEN = os.environ.get("SENSORTOWER_AUTH_TOKEN", "")
 APP_IOS = "324684580"
 
 PROBES = [
-    ("metadata", f"/v1/ios/apps", {"app_ids": APP_IOS, "country": "US"}),
-    ("search", f"/v1/ios/search_entities", {"entity_type": "app", "term": "spotify", "limit": 3}),
+    ("metadata", "/v1/ios/apps", {"app_ids": APP_IOS, "country": "US"}),
+    ("search", "/v1/ios/search_entities", {"entity_type": "app", "term": "spotify", "limit": 3}),
     (
         "reviews",
-        f"/v1/ios/review/get_reviews",
+        "/v1/ios/review/get_reviews",
         {"app_id": APP_IOS, "country": "US", "start_date": "2026-05-01", "end_date": "2026-06-13", "limit": 5},
     ),
     (
         "downloads",
-        f"/v1/ios/sales_report_estimates",
+        "/v1/ios/sales_report_estimates",
         {"app_ids": APP_IOS, "countries": "US", "date_granularity": "daily", "start_date": "2026-06-01", "end_date": "2026-06-13"},
     ),
     ("version_hist", "/v1/ios/apps/version_history", {"app_ids": APP_IOS, "country": "US"}),
