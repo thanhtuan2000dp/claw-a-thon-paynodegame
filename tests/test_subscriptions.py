@@ -137,19 +137,19 @@ class FakeMeta(AppDataConnector):
                            version="2.0", avg_rating=1.95, rating_count=350000)
 
 
-def test_background_scheduler_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("ENABLE_SCHEDULER", raising=False)
-    from scheduler.watch import start_background_scheduler
-    assert start_background_scheduler(_deps_with_subs()) is None
-
-
-def test_background_scheduler_starts_when_enabled(monkeypatch):
-    monkeypatch.setenv("ENABLE_SCHEDULER", "1")
+def test_background_scheduler_on_by_default(monkeypatch):
+    monkeypatch.delenv("ENABLE_SCHEDULER", raising=False)     # unset → runs
     monkeypatch.setenv("SCHEDULER_INTERVAL_SECONDS", "3600")  # one immediate cycle, then idle
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)   # dry-run, no network
     from scheduler.watch import start_background_scheduler
     t = start_background_scheduler(_deps_with_subs())         # empty store → first cycle is a no-op
     assert t is not None and t.daemon and t.is_alive()
+
+
+def test_background_scheduler_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_SCHEDULER", "0")               # explicit opt-out
+    from scheduler.watch import start_background_scheduler
+    assert start_background_scheduler(_deps_with_subs()) is None
 
 
 def test_subscription_cycle_delivers_then_dedups():
