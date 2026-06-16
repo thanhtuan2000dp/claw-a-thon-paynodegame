@@ -56,8 +56,8 @@
     .chartcap { font-size: 12px; color: #93c5fd; margin-bottom: 6px; }
     .chartbox canvas { max-height: 240px; }
     .sugbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-    .sugchip { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; text-align: left; }
-    .sugchip:hover { border-color: var(--accent); }
+    .sugchip { background-image: linear-gradient(var(--panel),var(--panel)), var(--grad); background-origin: border-box; background-clip: padding-box, border-box; border: 1px solid transparent; color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 16px; cursor: pointer; text-align: left; transition: filter .15s ease, transform .15s ease; }
+    .sugchip:hover { filter: brightness(1.3); transform: translateY(-1px); }
     .dlbar { display: flex; gap: 8px; margin-top: 10px; }
     .dlbtn { background: #0f1117; border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
     .dlbtn:hover { border-color: var(--accent); }
@@ -81,6 +81,23 @@
     .modehelp b { color: var(--text); }
     .subrow { display: flex; align-items: center; gap: 10px; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: 13px; }
     .abtn:disabled { opacity: .6; cursor: progress; }
+    /* ---- Copy button on bot answers ---- */
+    .copybtn { position: absolute; top: 8px; right: 8px; background: rgba(10,14,22,.7); border: 1px solid var(--glass-bd); color: var(--muted); font-size: 11px; padding: 3px 8px; border-radius: 7px; cursor: pointer; opacity: 0; transition: opacity .15s ease, color .15s ease; }
+    .msg.bot .bubble:hover .copybtn { opacity: 1; }
+    .copybtn:hover { color: var(--accent); border-color: var(--accent); }
+    /* ---- Typing dots + block reveal ---- */
+    .dots { display: inline-flex; gap: 4px; align-items: center; }
+    .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; animation: bounce 1.2s ease-in-out infinite; }
+    .dots i:nth-child(2) { animation-delay: .2s; }
+    .dots i:nth-child(3) { animation-delay: .4s; }
+    .dots .secs { color: var(--muted); font-size: 12px; margin-left: 6px; }
+    @keyframes bounce { 0%,80%,100% { transform: translateY(0); opacity: .5; } 40% { transform: translateY(-5px); opacity: 1; } }
+    .reveal { animation: revealUp .34s ease both; }
+    @keyframes revealUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    /* ---- Scroll-to-bottom ---- */
+    #scrollBtn { position: fixed; right: 28px; bottom: 96px; z-index: 30; display: none; background: var(--panel); border: 1px solid var(--glass-bd); color: var(--text); font-size: 12px; padding: 8px 14px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.4); backdrop-filter: blur(6px); }
+    #scrollBtn.show { display: inline-block; animation: fadeInUp .2s ease both; }
+    #scrollBtn:hover { border-color: var(--accent); }
     .spinner { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
                border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
                animation: spin .6s linear infinite; }
@@ -114,7 +131,7 @@
     @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) {
       .spinner, .fade-in, .subrow.removing, .apanel.open { animation: none; }
-      .aurora span, header .orb, header .live .dot, .hero .bigorb, .msg.bot .av { animation: none; }
+      .aurora span, header .orb, header .live .dot, .hero .bigorb, .msg.bot .av, .dots i, .reveal { animation: none; }
     }
   </style>
 </head>
@@ -182,6 +199,8 @@
 
   <div id="messages"></div>
 
+  <button id="scrollBtn" onclick="scrollToBottom()" aria-label="Cuộn xuống tin mới nhất">↓ mới nhất</button>
+
   <footer>
     <div class="inputbar">
       <textarea id="input" rows="1" placeholder="Hỏi về một app hoặc game: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
@@ -240,6 +259,38 @@
       document.getElementById('hero')?.remove();
     }
 
+    function addCopyButton(bubbleEl, md) {
+      if (!md) return;
+      const b = document.createElement('button');
+      b.className = 'copybtn'; b.type = 'button';
+      b.textContent = '⧉ Copy'; b.setAttribute('aria-label', 'Sao chép nội dung trả lời');
+      b.onclick = async () => {
+        try { await navigator.clipboard.writeText(md); b.textContent = '✓ Đã chép'; }
+        catch { b.textContent = '✗ Lỗi'; }
+        setTimeout(() => { b.textContent = '⧉ Copy'; }, 1500);
+      };
+      bubbleEl.appendChild(b);
+    }
+
+    const REDUCE = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Parse-then-reveal: render full markdown, then stagger-reveal top-level blocks.
+    // onDone fires after the last block animates (charts/chips/export append then).
+    function revealBubble(host, html, onDone) {
+      host.innerHTML = html;
+      const blocks = Array.from(host.children);
+      if (REDUCE() || !blocks.length) { onDone && onDone(); return; }
+      const step = 90;
+      blocks.forEach((b, i) => { b.classList.add('reveal'); b.style.animationDelay = (i * step) + 'ms'; });
+      setTimeout(() => onDone && onDone(), blocks.length * step + 340);
+    }
+
+    const scrollBtn = document.getElementById('scrollBtn');
+    function scrollToBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+    messagesEl.addEventListener('scroll', () => {
+      const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+      scrollBtn.classList.toggle('show', !atBottom);
+    });
+
     // ---- charts + export (front-end only, from the JSON result) ----
     function chartSpecs(r) {
       const uc = r.use_case, out = [];
@@ -273,7 +324,8 @@
         data: { labels: spec.labels, datasets: [{ label: spec.title, data: spec.data,
                 backgroundColor: 'rgba(34,197,94,.45)', borderColor: '#22c55e', borderWidth: 2,
                 tension: .3, fill: spec.type !== 'line' }] },
-        options: { animation: false, plugins: { legend: { display: false } },
+        options: { animation: REDUCE() ? false : { duration: 700, easing: 'easeOutQuart' },
+                   plugins: { legend: { display: false } },
                    scales: { x: { ticks: { color: '#94a3b8', font: { size: 10 } } },
                              y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } },
       });
@@ -365,14 +417,15 @@
       bubble('user', marked.parseInline(text));
       inputEl.value = '';
       sendBtn.disabled = true;
-      const typing = bubble('bot', '<span class="typing">Đang phân tích…</span>');
+      const typing = bubble('bot', '<span class="dots"><i></i><i></i><i></i><span class="secs"></span></span>');
       const tBubble = typing.querySelector('.bubble');
 
       // Elapsed-time feedback — cross-platform + LLM can take ~30-60s.
       let secs = 0;
+      const secsEl = tBubble.querySelector('.secs');
       const timer = setInterval(() => {
         secs += 1;
-        tBubble.innerHTML = `<span class="typing">Đang phân tích… ${secs}s</span>`;
+        if (secsEl) secsEl.textContent = secs + 's';
       }, 1000);
       // Hard timeout so the UI never spins forever.
       const ctrl = new AbortController();
@@ -396,12 +449,14 @@
         });
         const data = await resp.json();
         const md = data.markdown || '```json\n' + JSON.stringify(data.result || data, null, 2) + '\n```';
-        tBubble.innerHTML = marked.parse(md);
-        // Show export buttons only for meaningful data, or when the user asked to download.
         const exportAsked = ['tải về', 'tải xuống', 'tải file', 'xuất file', 'xuất dữ liệu',
           'xuất csv', 'xuất json', 'export', 'download', 'file csv', 'file json', '.csv', '.json']
           .some(k => text.toLowerCase().includes(k));
-        renderExtras(tBubble, data.result, exportAsked);   // charts + (gated) CSV/JSON export
+        revealBubble(tBubble, marked.parse(md), () => {
+          addCopyButton(tBubble, md);
+          renderExtras(tBubble, data.result, exportAsked);   // charts + (gated) CSV/JSON export
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
 
         const r = data.result || {};
         if (r.use_case === 'hypothesis_check') {
