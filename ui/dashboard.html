@@ -123,6 +123,17 @@
         themes: { praise: [{ theme: 'Chuyển tiền nhanh', count: 42 }, { theme: 'Giao diện gọn', count: 18 }], complaints: [{ theme: 'Quảng cáo', count: 55 }, { theme: 'Lỗi đăng nhập', count: 33 }] },
         summary: 'Rating giảm nhẹ tuần gần đây, chủ yếu do phàn nàn quảng cáo và lỗi đăng nhập.',
       } },
+      uc4_cross: { query: 'KPI của Spotify', result: {
+        use_case: 'uc4_kpi_dashboard', lang: 'vi', mode: 'cross_platform', app_query: 'Spotify',
+        platforms: {
+          ios: { app: { name: 'Spotify', store: 'ios' }, kpis: { rating: 4.7, rank: 3, rank_chart: 'top-free', ratings_count: 2500000, version: '9.0.1' },
+            deltas: { since: '2026-06-09', rating: 0.02, rank: -1, ratings_count: 12000 },
+            trend: [{ date: '2026-06-09', rating: 4.68, rank: 4, ratings_count: 2488000, version: '9.0.0' }, { date: '2026-06-16', rating: 4.70, rank: 3, ratings_count: 2500000, version: '9.0.1' }] },
+          android: { app: { name: 'Spotify', store: 'android' }, kpis: { rating: 4.3, rank: null, rank_chart: null, ratings_count: 31000000, version: '9.0.1' },
+            deltas: { since: '2026-06-09', rating: -0.01, rank: null, ratings_count: 45000 },
+            trend: [{ date: '2026-06-09', rating: 4.31, rank: null, ratings_count: 30955000, version: '9.0.0' }, { date: '2026-06-16', rating: 4.30, rank: null, ratings_count: 31000000, version: '9.0.1' }] },
+        },
+      } },
     };
     const REDUCE = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -236,7 +247,60 @@
       if (result.platforms) return Object.entries(result.platforms).filter(([k, v]) => v && !v.error).map(([k, v]) => ({ store: k, data: v }));
       return [{ store: '', data: result }];
     }
-    const DASHBOARDS = {};   // use_case → builder(block) → widget[] ; filled in Tasks 4–5
+    function buildUc2(b) {
+      const t = b.totals || {}, s = b.sentiment || {}, star = b.star_distribution || {}, ld = b.language_distribution || {}, wt = b.weekly_trend || [], th = b.themes || {};
+      const w = [
+        { kind: 'kpi', label: 'Tổng review', value: t.reviews != null ? num(t.reviews) : 'n/a' },
+        { kind: 'kpi', label: 'Rating TB', value: fmt(b.avg_rating) },
+        { kind: 'kpi', label: '% Tích cực', value: ((s.positive || {}).pct ?? 0) + '%', delta: 'tích cực', deltaDir: 'up' },
+        { kind: 'kpi', label: '% Tiêu cực', value: ((s.negative || {}).pct ?? 0) + '%', delta: 'tiêu cực', deltaDir: 'down' },
+      ];
+      w.push({ kind: 'chart', title: 'Phân bố sao', type: 'bar', labels: ['5★','4★','3★','2★','1★'], data: ['5','4','3','2','1'].map(k => (star[k] || {}).count || 0) });
+      if (wt.length > 1) w.push({ kind: 'chart', title: 'Rating theo tuần', type: 'line', labels: wt.map(x => x.week), data: wt.map(x => x.avg_rating) });
+      const lk = Object.keys(ld); if (lk.length) w.push({ kind: 'chart', title: 'Ngôn ngữ', type: 'doughnut', labels: lk, data: lk.map(k => ld[k].pct) });
+      if ((th.praise || []).length) w.push({ kind: 'list', title: '👍 Khen', items: th.praise.map(x => x.theme + ' (' + x.count + ')') });
+      if ((th.complaints || []).length) w.push({ kind: 'list', title: '👎 Phàn nàn / bug', items: th.complaints.map(x => x.theme + ' (' + x.count + ')') });
+      w.push({ kind: 'table', title: 'Phân bố sao', headers: ['★','#','%'], rows: ['5','4','3','2','1'].map(k => [k + '★', (star[k] || {}).count ?? 0, ((star[k] || {}).pct ?? 0) + '%']) });
+      if (b.summary) w.push({ kind: 'text', title: 'Tóm tắt', html: marked.parse(b.summary) });
+      return w;
+    }
+    function buildUc4(b) {
+      const k = b.kpis || {}, d = b.deltas || {}, tr = b.trend || [];
+      const w = [
+        { kind: 'kpi', label: 'Rating', value: fmt(k.rating), ...deltaOf(d.rating, 3) },
+        { kind: 'kpi', label: 'Rank', value: k.rank != null ? (k.rank_chart ? k.rank_chart + ' #' : '#') + k.rank : 'n/a', ...rankDelta(d.rank) },
+        { kind: 'kpi', label: 'Lượt rating', value: num(k.ratings_count), ...countDelta(d.ratings_count) },
+        { kind: 'kpi', label: 'Version', value: k.version || '?' },
+      ];
+      if (tr.length > 1) {
+        w.push({ kind: 'chart', title: 'Rating theo thời gian', type: 'line', labels: tr.map(x => x.date), data: tr.map(x => x.rating) });
+        if (tr.some(x => x.rank != null)) w.push({ kind: 'chart', title: 'Rank theo thời gian', type: 'line', labels: tr.map(x => x.date), data: tr.map(x => x.rank) });
+        w.push({ kind: 'table', title: 'Lịch sử', headers: ['Ngày','Rating','Rank','Lượt rating','Version'],
+          rows: tr.map(x => [x.date, fmt(x.rating), x.rank ?? 'n/a', num(x.ratings_count), x.version || '']) });
+      }
+      return w;
+    }
+    function buildUc7(b) {
+      const comp = b.comparison || [], you = comp.find(c => c.is_you) || {};
+      const w = [
+        { kind: 'kpi', label: 'Rank của bạn', value: you.rank != null ? '#' + you.rank : 'n/a' },
+        { kind: 'kpi', label: 'Rating của bạn', value: fmt(you.rating) },
+        { kind: 'kpi', label: 'Số app so sánh', value: comp.length },
+      ];
+      if (comp.length) {
+        w.push({ kind: 'chart', title: 'Rating đối thủ', type: 'bar', labels: comp.map(c => c.name), data: comp.map(c => c.rating) });
+        if (comp.some(c => c.rank != null)) w.push({ kind: 'chart', title: 'Rank đối thủ', type: 'bar', labels: comp.map(c => c.name), data: comp.map(c => c.rank) });
+        w.push({ kind: 'table', title: 'So sánh', headers: ['App','Rank','Rating','Lượt rating','Giá','Version'],
+          rows: comp.map(c => [(c.is_you ? '⭐ ' : '') + c.name, c.rank ?? 'n/a', fmt(c.rating), num(c.ratings_count), c.price || 'n/a', c.version || 'n/a']) });
+      }
+      if ((b.positioning || []).length) w.push({ kind: 'list', title: '📊 Định vị', items: b.positioning });
+      return w;
+    }
+    const DASHBOARDS = {
+      uc2_reviews_sentiment: buildUc2,
+      uc4_kpi_dashboard: buildUc4,
+      uc7_competitive_comparison: buildUc7,
+    };
     function buildGeneric(block) {
       const w = [];
       Object.entries(block).forEach(([k, v]) => { if (typeof v === 'number') w.push({ kind: 'kpi', label: k, value: fmt(v) }); });
