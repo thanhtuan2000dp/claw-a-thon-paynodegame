@@ -104,6 +104,26 @@
 
   <script>
     marked.setOptions({ gfm: true, breaks: true });
+    const UC_NAMES = {
+      uc1_store_metadata: 'Metadata cửa hàng', uc2_reviews_sentiment: 'Review & sentiment',
+      uc3_version_changelog: 'Lịch sử phiên bản', uc4_kpi_dashboard: 'Bảng KPI',
+      uc6_version_impact: 'Tác động bản cập nhật', uc7_competitive_comparison: 'So sánh đối thủ',
+      uc8_competitor_weakness: 'Điểm yếu đối thủ', uc9_trend_alert: 'Cảnh báo biến động',
+      uc10_insight_qa: 'Hỏi đáp tổng hợp',
+    };
+    const PIE_COLORS = ['rgba(34,197,94,.6)','rgba(34,211,238,.6)','rgba(168,85,247,.6)','rgba(251,191,36,.6)','rgba(248,113,113,.6)','rgba(148,163,184,.6)'];
+    const DEMO = {
+      uc2: { query: 'review gần đây của Zalo nói gì?', result: {
+        use_case: 'uc2_reviews_sentiment', lang: 'vi', app: { name: 'Zalo', store: 'ios' },
+        window: { from: '2026-05-17', to: '2026-06-16' }, totals: { reviews: 420 }, avg_rating: 3.8,
+        sentiment: { positive: { pct: 58 }, neutral: { pct: 12 }, negative: { pct: 30 } },
+        star_distribution: { '5': { count: 210, pct: 50 }, '4': { count: 60, pct: 14 }, '3': { count: 30, pct: 7 }, '2': { count: 40, pct: 10 }, '1': { count: 80, pct: 19 } },
+        language_distribution: { vi: { pct: 82 }, en: { pct: 18 } },
+        weekly_trend: [{ week: '2026-W19', volume: 90, avg_rating: 4.0, negative_pct: 22 }, { week: '2026-W20', volume: 110, avg_rating: 3.9, negative_pct: 27 }, { week: '2026-W21', volume: 130, avg_rating: 3.6, negative_pct: 34 }, { week: '2026-W22', volume: 90, avg_rating: 3.7, negative_pct: 31 }],
+        themes: { praise: [{ theme: 'Chuyển tiền nhanh', count: 42 }, { theme: 'Giao diện gọn', count: 18 }], complaints: [{ theme: 'Quảng cáo', count: 55 }, { theme: 'Lỗi đăng nhập', count: 33 }] },
+        summary: 'Rating giảm nhẹ tuần gần đây, chủ yếu do phàn nàn quảng cáo và lỗi đăng nhập.',
+      } },
+    };
     const REDUCE = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
     const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -129,16 +149,156 @@
         '<p class="textw" style="margin-top:12px"><a class="pill" href="/">← Về chat</a></p></div>';
     }
 
-    // Minimal render — replaced by the full engine in Task 3.
-    function renderDashboard(result, query) {
-      document.getElementById('meta').textContent = [result.app_query || (result.app && result.app.name) || '', result.use_case, query].filter(Boolean).join(' · ');
+    // ---- delta helpers (rank: lower is better, so negative rank delta = up) ----
+    function deltaOf(v, d = 2) { if (v == null) return {}; return { delta: signed(v, d), deltaDir: v > 0 ? 'up' : v < 0 ? 'down' : 'flat' }; }
+    function rankDelta(v) { if (v == null) return {}; return { delta: (v > 0 ? '+' : '') + v, deltaDir: v < 0 ? 'up' : v > 0 ? 'down' : 'flat' }; }
+    function countDelta(v) { if (typeof v !== 'number') return {}; return { delta: (v > 0 ? '+' : '') + v.toLocaleString(), deltaDir: v > 0 ? 'up' : v < 0 ? 'down' : 'flat' }; }
+
+    // ---- card renderers ----
+    function kpiCard(w) {
+      const c = el('div', 'card kpi');
+      c.appendChild(el('div', 'label', esc(w.label)));
+      c.appendChild(el('div', 'value', w.value == null ? 'n/a' : esc(String(w.value))));
+      if (w.delta != null) c.appendChild(el('div', 'delta ' + (w.deltaDir || 'flat'),
+        (w.deltaDir === 'up' ? '▲ ' : w.deltaDir === 'down' ? '▼ ' : '• ') + esc(String(w.delta))));
+      return c;
+    }
+    function chartCard(w) {
+      const c = el('div', 'card wide'); const ttl = el('div', 'title', esc(w.title));
+      if (w.type === 'bar' || w.type === 'line') {
+        const sw = el('button', 'pill chartswitch', w.type === 'bar' ? '⤳ line' : '⤳ bar');
+        sw.onclick = () => { w.type = w.type === 'bar' ? 'line' : 'bar'; const fresh = chartCard(w); fresh.classList.add('reveal'); c.replaceWith(fresh); };
+        ttl.appendChild(sw);
+      }
+      c.appendChild(ttl);
+      const cv = document.createElement('canvas'); c.appendChild(cv);
+      const isPie = w.type === 'doughnut' || w.type === 'pie';
+      c._chart = new Chart(cv, {
+        type: w.type,
+        data: { labels: w.labels, datasets: [{ label: w.title, data: w.data,
+          backgroundColor: isPie ? PIE_COLORS : 'rgba(34,197,94,.45)', borderColor: '#22c55e', borderWidth: 2,
+          tension: .3, fill: w.type !== 'line' }] },
+        options: { animation: REDUCE() ? false : { duration: 700, easing: 'easeOutQuart' },
+          plugins: { legend: { display: isPie } },
+          scales: isPie ? {} : { x: { ticks: { color: '#94a3b8', font: { size: 10 } } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } },
+      });
+      c._spec = w;
+      return c;
+    }
+    function tableCard(w) {
+      const c = el('div', 'card wide'); c.appendChild(el('div', 'title', esc(w.title || 'Bảng')));
+      const headers = w.headers || [], rows = (w.rows || []).map(r => r.slice());
+      let sortCol = -1, sortAsc = true, filter = '';
+      const fbox = el('input', 'tfilter'); fbox.type = 'text'; fbox.placeholder = 'Lọc…';
+      fbox.setAttribute('aria-label', 'Lọc bảng');
+      const tbl = el('table'), thead = el('thead'), tbody = el('tbody');
+      const htr = el('tr');
+      headers.forEach((h, ci) => { const th = el('th', null, esc(h)); th.onclick = () => { sortAsc = sortCol === ci ? !sortAsc : true; sortCol = ci; paint(); }; htr.appendChild(th); });
+      thead.appendChild(htr); tbl.appendChild(thead); tbl.appendChild(tbody);
+      fbox.oninput = () => { filter = fbox.value.toLowerCase(); paint(); };
+      function paint() {
+        let view = rows.filter(r => !filter || r.some(cell => String(cell == null ? '' : cell).toLowerCase().includes(filter)));
+        if (sortCol >= 0) {
+          view = view.slice().sort((a, b) => {
+            const x = a[sortCol], y = b[sortCol], nx = parseFloat(String(x).replace(/[,#%]/g, '')), ny = parseFloat(String(y).replace(/[,#%]/g, ''));
+            const cmp = (!isNaN(nx) && !isNaN(ny)) ? nx - ny : String(x).localeCompare(String(y));
+            return sortAsc ? cmp : -cmp;
+          });
+        }
+        tbody.innerHTML = '';
+        view.forEach(r => { const tr = el('tr'); r.forEach(cell => tr.appendChild(el('td', null, esc(cell == null ? '' : cell)))); tbody.appendChild(tr); });
+      }
+      if (rows.length > 5) c.appendChild(fbox);
+      c.appendChild(tbl); paint();
+      return c;
+    }
+    function listCard(w) {
+      const c = el('div', 'card'); c.appendChild(el('div', 'title', esc(w.title)));
+      const ul = el('ul', 'listw'); (w.items || []).forEach(it => ul.appendChild(el('li', null, esc(it)))); c.appendChild(ul);
+      return c;
+    }
+    function textCard(w) {
+      const c = el('div', 'card wide'); if (w.title) c.appendChild(el('div', 'title', esc(w.title)));
+      c.appendChild(el('div', 'textw', w.html || ''));
+      return c;
+    }
+    function cardFor(w) {
+      if (w.kind === 'kpi') return kpiCard(w);
+      if (w.kind === 'chart') return chartCard(w);
+      if (w.kind === 'table') return tableCard(w);
+      if (w.kind === 'list') return listCard(w);
+      if (w.kind === 'text') return textCard(w);
+      return null;
+    }
+
+    // ---- block selection + generic fallback ----
+    function pickBlocks(result) {
+      if (result.platforms) return Object.entries(result.platforms).filter(([k, v]) => v && !v.error).map(([k, v]) => ({ store: k, data: v }));
+      return [{ store: '', data: result }];
+    }
+    const DASHBOARDS = {};   // use_case → builder(block) → widget[] ; filled in Tasks 4–5
+    function buildGeneric(block) {
+      const w = [];
+      Object.entries(block).forEach(([k, v]) => { if (typeof v === 'number') w.push({ kind: 'kpi', label: k, value: fmt(v) }); });
+      Object.entries(block).forEach(([k, v]) => {
+        if (Array.isArray(v) && v.length && typeof v[0] === 'object') {
+          const headers = Object.keys(v[0]);
+          w.push({ kind: 'table', title: k, headers, rows: v.map(o => headers.map(h => typeof o[h] === 'object' ? JSON.stringify(o[h]) : o[h])) });
+        }
+      });
+      if (block.summary) w.push({ kind: 'text', title: 'Tóm tắt', html: marked.parse(block.summary) });
+      if (!w.length) w.push({ kind: 'text', title: 'Dữ liệu', html: '<pre>' + esc(JSON.stringify(block, null, 2)) + '</pre>' });
+      return w;
+    }
+    function widgetsFor(uc, block) {
+      try { return DASHBOARDS[uc] ? DASHBOARDS[uc](block) : buildGeneric(block); }
+      catch (e) { console.warn('builder failed', uc, e); return buildGeneric(block); }
+    }
+
+    // ---- render engine ----
+    let CURRENT = { result: null, blocks: [], store: 'all', uc: '' };
+    function setHeaderMeta(result, query) {
+      const app = result.app_query || (result.app && result.app.name) ||
+        (result.platforms && (Object.values(result.platforms).find(p => p && p.app) || {}).app || {}).name || '';
+      document.getElementById('meta').textContent = [app, UC_NAMES[result.use_case] || result.use_case, query].filter(Boolean).join(' · ');
+      document.title = (app ? app + ' — ' : '') + 'Veridex Dashboard';
+    }
+    function setStore(s) { CURRENT.store = s; buildStoreToggle(); drawGrid(); }
+    function buildStoreToggle() {
+      const host = document.getElementById('storeToggle'); host.innerHTML = '';
+      if (CURRENT.blocks.length < 2) return;
+      const opts = [['all', 'Cả hai'], ...CURRENT.blocks.map(b => [b.store, b.store === 'ios' ? '🍎 iOS' : '🤖 Android'])];
+      opts.forEach(([val, label]) => {
+        const btn = el('button', 'pill' + (CURRENT.store === val ? ' active' : ''), label);
+        btn.onclick = () => setStore(val);
+        host.appendChild(btn);
+      });
+    }
+    function drawGrid() {
       const host = document.getElementById('grid'); host.innerHTML = '';
-      host.appendChild(el('div', 'card wide', '<div class="title">Đã nhận dữ liệu</div><div class="textw">use_case: <b>' + esc(result.use_case || '?') + '</b></div><pre class="textw" style="white-space:pre-wrap;word-break:break-word">' + esc(JSON.stringify(result, null, 2)) + '</pre>'));
+      const blocks = CURRENT.store === 'all' ? CURRENT.blocks : CURRENT.blocks.filter(b => b.store === CURRENT.store);
+      let idx = 0;
+      blocks.forEach(b => {
+        if (CURRENT.blocks.length > 1 && b.store) host.appendChild(el('div', 'card wide storehead', b.store === 'ios' ? '🍎 iOS' : '🤖 Android'));
+        widgetsFor(CURRENT.uc, b.data).forEach(w => {
+          const card = cardFor(w); if (!card) return;
+          if (!REDUCE()) { card.classList.add('reveal'); card.style.animationDelay = (idx * 60) + 'ms'; }
+          host.appendChild(card); idx++;
+        });
+      });
+    }
+    function renderDashboard(result, query) {
+      CURRENT = { result, blocks: pickBlocks(result), store: 'all', uc: result.use_case };
+      setHeaderMeta(result, query);
+      buildStoreToggle();
+      drawGrid();
     }
 
     function init() {
       applyTheme(localStorage.getItem('veridex_dash_theme') || 'dark');
       const params = new URLSearchParams(location.search);
+      const demo = params.get('demo');
+      if (demo && DEMO[demo]) { renderDashboard(DEMO[demo].result, DEMO[demo].query); return; }
       const id = params.get('d');
       let payload = null;
       if (id) { try { payload = JSON.parse(localStorage.getItem('veridex_dash_' + id)); } catch (e) {} }
