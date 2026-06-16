@@ -122,16 +122,37 @@
     @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(60px,40px) scale(1.15); } }
     @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,30px) scale(1.1); } }
     @keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-50px) scale(1.2); } }
+    /* ---- Alerts drawer ---- */
+    #drawerBackdrop { position: fixed; inset: 0; z-index: 40; background: rgba(2,6,12,.55); opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s ease; }
+    #drawerBackdrop.open { opacity: 1; visibility: visible; }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(460px, 92vw); background: #121826; border-left: 1px solid var(--border); border-bottom: none; box-shadow: -12px 0 40px rgba(0,0,0,.5); transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1); overflow-y: auto; padding: 20px 22px 28px; }
+    .drawer.open { transform: translateX(0); }
+    .drawer .dhead { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .drawer .dhead h3 { font-size: 14px; color: #93c5fd; }
+    .drawer .dclose { margin-left: auto; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
+    .drawer .dclose:hover { color: var(--accent); border-color: var(--accent); }
+    .drawer .arow { flex-direction: column; align-items: stretch; }
+    .drawer .afield { width: 100%; }
+    .drawer .apanel-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    /* ---- Toasts ---- */
+    #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+    .toast { min-width: 220px; max-width: 320px; padding: 10px 14px; border-radius: 10px; font-size: 13px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0,0,0,.45); animation: toastIn .25s ease both; }
+    .toast.ok  { border-left: 3px solid #22c55e; }
+    .toast.err { border-left: 3px solid #f87171; }
+    .toast.info{ border-left: 3px solid #fbbf24; }
+    .toast.out { animation: toastOut .25s ease forwards; }
+    @keyframes toastIn  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+    @media (prefers-reduced-motion: reduce) { .toast, .toast.out { animation: none; } }
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade-in { animation: fadeInUp .25s ease both; }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .subrow.removing { animation: rowOut .2s ease forwards; }
     @keyframes rowOut { to { opacity: 0; transform: translateX(10px); } }
-    .apanel.open { animation: slideDown .22s ease; }
-    @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) {
-      .spinner, .fade-in, .subrow.removing, .apanel.open { animation: none; }
+      .spinner, .fade-in, .subrow.removing { animation: none; }
       .aurora span, header .orb, header .live .dot, .hero .bigorb, .msg.bot .av, .dots i, .reveal { animation: none; }
+      #drawerBackdrop, .drawer { transition: none; }
     }
   </style>
 </head>
@@ -141,65 +162,68 @@
     <span class="orb">✦</span>
     <span class="wordmark">Veridex</span>
     <span class="live"><span class="dot"></span>live</span>
-    <button id="alertsBtn" class="hbtn" onclick="toggleAlerts()">🔔 Cảnh báo</button>
+    <button id="alertsBtn" class="hbtn" onclick="openDrawer()">🔔 Cảnh báo</button>
     <span class="sub" id="mode">App &amp; game · App Store &amp; Google Play · VI/EN</span>
   </header>
 
-  <section id="alertsPanel" class="apanel" style="display:none">
-    <div class="inner">
+  <div id="drawerBackdrop" onclick="closeDrawer()"></div>
+  <aside id="alertsPanel" class="drawer apanel" role="dialog" aria-modal="true" aria-label="Đăng ký cảnh báo">
+    <div class="dhead">
       <h3>🔔 Đăng ký cảnh báo qua Telegram</h3>
-      <div class="asub">Nhận cảnh báo bất thường (rating/rank/version) của app vào Telegram của bạn. Chỉ cần <b>chat ID</b> — token bot do hệ thống giữ.</div>
-      <div class="arow">
-        <div class="afield" style="flex:1; min-width:180px">
-          <label>Telegram chat ID</label>
-          <input id="subChat" placeholder="vd 987654321" />
-        </div>
-        <div class="afield" style="flex:1; min-width:160px">
-          <label>App (tên hoặc store id)</label>
-          <input id="subApp" placeholder="vd zalopay" />
-        </div>
-        <div class="afield">
-          <label>Store</label>
-          <select id="subStore"><option value="ios">iOS</option><option value="android">Android</option><option value="both">Cả hai</option></select>
-        </div>
-        <div class="afield">
-          <label>Loại <span class="infoic" onclick="toggleModeHelp()" title="Bấm để xem giải thích 2 chế độ">ⓘ</span></label>
-          <select id="subMode" onchange="subModeChange()"><option value="alert">Cảnh báo bất thường</option><option value="digest">Báo cáo định kỳ</option></select>
-        </div>
-        <div class="afield">
-          <label>Ngôn ngữ</label>
-          <select id="subLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
-        </div>
-      </div>
-      <div class="arow">
-        <div class="afield" id="freqRow">
-          <label>Tần suất</label>
-          <select id="subFreq" onchange="subFreqChange()"><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần</option></select>
-        </div>
-        <div class="afield" id="weekdayRow" style="display:none">
-          <label>Thứ</label>
-          <select id="subWeekday"></select>
-        </div>
-        <div class="afield" id="hourRow">
-          <label>Giờ nhận</label>
-          <select id="subHour"></select>
-        </div>
-        <button class="abtn" onclick="subSave(this)">Lưu đăng ký</button>
-        <button class="abtn ghost" onclick="subTest(this)">Gửi thử</button>
-        <button class="abtn ghost" onclick="subList(this)">Đăng ký của tôi</button>
-      </div>
-      <div id="modeHelp" class="modehelp" style="display:none">
-        <div><b>🔔 Cảnh báo bất thường</b> — chỉ nhắn khi phát hiện <b>biến động</b>: rating tụt, thứ hạng tụt, hoặc đổi phiên bản. Tự kiểm <b>hằng ngày</b> (không cần chọn giờ); app ổn định thì không gửi gì.</div>
-        <div><b>📊 Báo cáo định kỳ</b> — <b>luôn gửi</b> tình hình app (rating · rank · phiên bản + biến động nếu có) vào <b>giờ bạn chọn</b> (hằng ngày hoặc hằng tuần).</div>
-      </div>
-      <div id="subStatus"></div>
-      <div id="subListBox"></div>
+      <button class="dclose" onclick="closeDrawer()" aria-label="Đóng">✕</button>
     </div>
-  </section>
+    <div class="asub">Nhận cảnh báo bất thường (rating/rank/version) của app vào Telegram của bạn. Chỉ cần <b>chat ID</b> — token bot do hệ thống giữ.</div>
+    <div class="arow">
+      <div class="afield">
+        <label>Telegram chat ID</label>
+        <input id="subChat" placeholder="vd 987654321" />
+      </div>
+      <div class="afield">
+        <label>App (tên hoặc store id)</label>
+        <input id="subApp" placeholder="vd zalopay" />
+      </div>
+      <div class="afield">
+        <label>Store</label>
+        <select id="subStore"><option value="ios">iOS</option><option value="android">Android</option><option value="both">Cả hai</option></select>
+      </div>
+      <div class="afield">
+        <label>Loại <span class="infoic" onclick="toggleModeHelp()" title="Bấm để xem giải thích 2 chế độ">ⓘ</span></label>
+        <select id="subMode" onchange="subModeChange()"><option value="alert">Cảnh báo bất thường</option><option value="digest">Báo cáo định kỳ</option></select>
+      </div>
+      <div class="afield">
+        <label>Ngôn ngữ</label>
+        <select id="subLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
+      </div>
+      <div class="afield" id="freqRow">
+        <label>Tần suất</label>
+        <select id="subFreq" onchange="subFreqChange()"><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần</option></select>
+      </div>
+      <div class="afield" id="weekdayRow" style="display:none">
+        <label>Thứ</label>
+        <select id="subWeekday"></select>
+      </div>
+      <div class="afield" id="hourRow">
+        <label>Giờ nhận</label>
+        <select id="subHour"></select>
+      </div>
+    </div>
+    <div class="apanel-actions">
+      <button class="abtn" onclick="subSave(this)">Lưu đăng ký</button>
+      <button class="abtn ghost" onclick="subTest(this)">Gửi thử</button>
+      <button class="abtn ghost" onclick="subList(this)">Đăng ký của tôi</button>
+    </div>
+    <div id="modeHelp" class="modehelp" style="display:none">
+      <div><b>🔔 Cảnh báo bất thường</b> — chỉ nhắn khi phát hiện <b>biến động</b>: rating tụt, thứ hạng tụt, hoặc đổi phiên bản. Tự kiểm <b>hằng ngày</b> (không cần chọn giờ); app ổn định thì không gửi gì.</div>
+      <div><b>📊 Báo cáo định kỳ</b> — <b>luôn gửi</b> tình hình app (rating · rank · phiên bản + biến động nếu có) vào <b>giờ bạn chọn</b> (hằng ngày hoặc hằng tuần).</div>
+    </div>
+    <div id="subStatus" aria-live="polite"></div>
+    <div id="subListBox"></div>
+  </aside>
 
   <div id="messages"></div>
 
   <button id="scrollBtn" onclick="scrollToBottom()" aria-label="Cuộn xuống tin mới nhất">↓ mới nhất</button>
+  <div id="toasts" aria-live="polite"></div>
 
   <footer>
     <div class="inputbar">
@@ -249,7 +273,7 @@
       h.querySelectorAll('.hero-card').forEach(btn => {
         btn.onclick = () => {
           const c = HERO_CARDS[+btn.dataset.i];
-          if (c.drawer) { toggleAlerts(); return; }
+          if (c.drawer) { openDrawer(); return; }
           if (!sendBtn.disabled) { inputEl.value = c.prompt; send(); }
         };
       });
@@ -490,11 +514,28 @@
     const _esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     const _DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
-    function toggleAlerts() {
-      const p = document.getElementById('alertsPanel');
-      const open = p.style.display === 'none';
-      p.style.display = open ? 'block' : 'none';
-      if (open) { p.classList.remove('open'); void p.offsetWidth; p.classList.add('open'); }
+    let _lastFocus = null;
+    function openDrawer() {
+      _lastFocus = document.activeElement;
+      document.getElementById('drawerBackdrop').classList.add('open');
+      document.getElementById('alertsPanel').classList.add('open');
+      setTimeout(() => document.getElementById('subChat').focus(), 50);
+    }
+    function closeDrawer() {
+      document.getElementById('drawerBackdrop').classList.remove('open');
+      document.getElementById('alertsPanel').classList.remove('open');
+      if (_lastFocus && _lastFocus.focus) _lastFocus.focus();
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('alertsPanel').classList.contains('open')) closeDrawer();
+    });
+    function showToast(msg, kind) {
+      if (!msg) return;
+      const t = document.createElement('div');
+      t.className = 'toast ' + (kind === 'err' ? 'err' : kind === 'info' ? 'info' : 'ok');
+      t.textContent = (kind === 'err' ? '✗ ' : kind === 'info' ? 'ⓘ ' : '✓ ') + msg;
+      document.getElementById('toasts').appendChild(t);
+      setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, 3500);
     }
     function subFreqChange() {
       document.getElementById('weekdayRow').style.display =
@@ -522,6 +563,7 @@
       s.textContent = icon + msg;
       s.style.color = kind === 'err' ? '#f87171' : kind === 'info' ? '#fbbf24' : '#22c55e';
       s.classList.remove('fade-in'); void s.offsetWidth; s.classList.add('fade-in');  // retrigger
+      showToast(msg, kind);  // visible toast; #subStatus remains the aria-live fallback
     }
     // Disable + spinner on the clicked button while its request is in flight.
     async function _busy(btn, label, fn) {
