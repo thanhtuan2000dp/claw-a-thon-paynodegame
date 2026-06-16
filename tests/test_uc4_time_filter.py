@@ -85,3 +85,57 @@ def test_filter_meta_rolling():
 
 def test_filter_meta_all():
     assert _filter_meta(None, None, None) == {"type": "all"}
+
+
+from connectors.base import AppMetadata  # noqa: E402
+from storage.snapshots import Snapshot  # noqa: E402
+from usecases.uc4_kpi_dashboard import KpiDashboardUseCase  # noqa: E402
+
+
+def _fake_snap(dates, store="ios"):
+    meta = AppMetadata(
+        app_id="com.zing.zalo", name="Zalo", store=store,
+        version="26.05.02.1", avg_rating=1.95, rating_count=350482,
+    )
+    history = [
+        Snapshot(captured_at=d, app_id="com.zing.zalo", store=store,
+                 avg_rating=1.95, rating_count=350000, version="26.05.02.1")
+        for d in dates
+    ]
+    return {"ref": None, "meta": meta, "rank": 6, "rank_chart": "Social Networking", "history": history}
+
+
+def test_uc4_date_range_filter():
+    dates = ["2026-04-15", "2026-05-01", "2026-05-20", "2026-06-01", "2026-06-10"]
+    uc = KpiDashboardUseCase()
+    with patch("usecases.uc4_kpi_dashboard.snapshot_app", return_value=_fake_snap(dates)):
+        result = uc.run({"app": "Zalo", "store": "ios",
+                         "date_from": "2026-06-01", "date_to": "2026-06-30"}, deps=None)
+    assert result.get("error") is None
+    assert result["filter"] == {"type": "range", "date_from": "2026-06-01", "date_to": "2026-06-30"}
+    assert len(result["trend"]) == 2
+    assert all(r["date"] >= "2026-06-01" for r in result["trend"])
+
+
+def test_uc4_no_filter_returns_all():
+    dates = ["2026-04-15", "2026-05-01", "2026-06-10"]
+    uc = KpiDashboardUseCase()
+    with patch("usecases.uc4_kpi_dashboard.snapshot_app", return_value=_fake_snap(dates)):
+        result = uc.run({"app": "Zalo", "store": "ios"}, deps=None)
+    assert result["filter"] == {"type": "all"}
+    assert len(result["trend"]) == 3
+
+
+def test_uc4_window_days_filter():
+    import usecases.uc4_kpi_dashboard as uc4_mod
+    dates = ["2026-04-15", "2026-05-20", "2026-06-10"]
+    fake_dt = types.SimpleNamespace(
+        date=types.SimpleNamespace(today=lambda: datetime.date(2026, 6, 16)),
+        timedelta=datetime.timedelta,
+    )
+    uc = KpiDashboardUseCase()
+    with patch("usecases.uc4_kpi_dashboard.snapshot_app", return_value=_fake_snap(dates)), \
+         patch.object(uc4_mod, "_dt", fake_dt):
+        result = uc.run({"app": "Zalo", "store": "ios", "window_days": 45}, deps=None)
+    assert result["filter"] == {"type": "rolling", "window_days": 45}
+    assert len(result["trend"]) == 2  # 2026-05-20 and 2026-06-10 (cutoff = 2026-05-02)
