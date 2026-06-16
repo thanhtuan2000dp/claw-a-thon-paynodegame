@@ -7,9 +7,12 @@ filtering behavior. No network or LLM required.
 import datetime
 import os
 import sys
+import types
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import usecases.uc4_kpi_dashboard as m
 
 from usecases.uc4_kpi_dashboard import _apply_trend_filter, _filter_meta  # noqa: E402
 
@@ -43,9 +46,10 @@ def test_filter_date_to_only():
 
 def test_filter_window_days():
     # Mock today as 2026-06-16 → cutoff = 2026-05-02 (45 days back)
-    import usecases.uc4_kpi_dashboard as m
-    FakeDate = type("FakeDate", (), {"today": staticmethod(lambda: datetime.date(2026, 6, 16))})
-    fake_dt = type("FakeDt", (), {"date": FakeDate, "timedelta": datetime.timedelta})()
+    fake_dt = types.SimpleNamespace(
+        date=types.SimpleNamespace(today=lambda: datetime.date(2026, 6, 16)),
+        timedelta=datetime.timedelta,
+    )
     with patch.object(m, "_dt", fake_dt):
         result = _apply_trend_filter(TREND, 45, None, None)
     assert [r["date"] for r in result] == ["2026-05-20", "2026-06-01", "2026-06-10"]
@@ -60,6 +64,18 @@ def test_filter_date_range_takes_priority_over_window_days():
 def test_filter_meta_range():
     assert _filter_meta(None, "2026-06-01", "2026-06-16") == {
         "type": "range", "date_from": "2026-06-01", "date_to": "2026-06-16"
+    }
+
+
+def test_filter_meta_date_from_only():
+    assert _filter_meta(None, "2026-06-01", None) == {
+        "type": "range", "date_from": "2026-06-01", "date_to": None
+    }
+
+
+def test_filter_meta_date_to_only():
+    assert _filter_meta(None, None, "2026-06-30") == {
+        "type": "range", "date_from": None, "date_to": "2026-06-30"
     }
 
 
