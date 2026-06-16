@@ -18,6 +18,25 @@
       --grad:linear-gradient(135deg,#22c55e,#22d3ee,#a855f7);
       --glass-bg:rgba(255,255,255,.05); --glass-bd:rgba(148,163,184,.18);
     }
+    body.light {
+      --bg:#eef2f7; --panel:#ffffff; --border:#dfe5ee; --muted:#64748b; --text:#0f172a;
+      --glass-bg:rgba(255,255,255,.82); --glass-bd:rgba(15,23,42,.10);
+    }
+    body.light .aurora span { opacity: .10; }
+    body.light header { background: rgba(255,255,255,.75); }
+    body.light .msg.bot .bubble { background: #fff; border-color: var(--border); }
+    body.light .msg.user .bubble { background: linear-gradient(135deg,#1e3a5f,#1e4f6e); color: #e2e8f0; }
+    body.light .bubble th { background: rgba(15,23,42,.06); }
+    body.light .bubble code { background: rgba(15,23,42,.07); }
+    body.light .chartbox { background: #f4f7fb; }
+    body.light .apanel { background: #f4f7fb; }
+    body.light .apanel input, body.light .apanel select { background: #fff; }
+    body.light .drawer { background: #f4f7fb; }
+    body.light .dlbtn { background: #f4f7fb; }
+    body.light .copybtn { background: rgba(255,255,255,.8); }
+    body.light .hero-card .t { color: var(--text); }
+    body.light #scrollBtn { background: var(--panel); }
+    body.light .toast { background: var(--panel); }
     body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; position: relative; overflow: hidden; }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -170,6 +189,7 @@
     <span class="wordmark">Veridex</span>
     <span class="live"><span class="dot"></span>live</span>
     <button id="alertsBtn" class="hbtn" onclick="openDrawer()">🔔 Cảnh báo</button>
+    <button id="themeBtn" class="hbtn" onclick="toggleTheme()" aria-label="Đổi giao diện sáng/tối" style="padding:7px 10px">🌙</button>
     <span class="sub" id="mode">App &amp; game · App Store &amp; Google Play · VI/EN</span>
   </header>
 
@@ -241,6 +261,19 @@
 
   <script>
     marked.setOptions({ gfm: true, breaks: true });
+
+    // ---- theme ----
+    function applyTheme(t) {
+      document.body.classList.toggle('light', t === 'light');
+      document.getElementById('themeBtn').textContent = t === 'light' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+      const next = document.body.classList.contains('light') ? 'dark' : 'light';
+      localStorage.setItem('veridex_chat_theme', next);
+      applyTheme(next);
+    }
+    applyTheme(localStorage.getItem('veridex_chat_theme') || 'dark');
+
     const sessionId = 'web-' + Math.random().toString(36).slice(2, 10);
     let hcActive = false;          // true while a hypothesis conversation is mid-flow
     const messagesEl = document.getElementById('messages');
@@ -262,7 +295,7 @@
     const HERO_CARDS = [
       { t: '⭐ Review', d: 'review gần đây của Zalo nói gì?', prompt: 'review gần đây của Zalo nói gì?' },
       { t: '⚔️ So sánh', d: 'Liên Quân vs game cùng thể loại', prompt: 'Liên Quân Mobile so với game cùng thể loại thế nào?' },
-      { t: '📈 Bất thường', d: 'Genshin có dấu hiệu bất thường?', prompt: 'Genshin Impact có dấu hiệu bất thường không?' },
+      { t: '📊 KPI', d: 'Rating & rank Zalo tháng này', prompt: 'KPI tháng này của Zalo: rating, rank và version trên App Store và Google Play?' },
       { t: '🔔 Cảnh báo', d: 'Đăng ký cảnh báo qua Telegram', drawer: true },
     ];
     function renderHero() {
