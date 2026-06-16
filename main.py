@@ -38,6 +38,21 @@ async def _chat_ui(request):  # GET / -> chat interface
 
 app.add_route("/", _chat_ui, methods=["GET"])
 
+# Detail dashboard served at GET /dashboard (opened in a new tab from the chat UI).
+_DASH_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "dashboard.html")
+try:
+    with open(_DASH_PATH, encoding="utf-8") as _fh:
+        _DASH_HTML = _fh.read()
+except OSError:
+    _DASH_HTML = "<h1>Veridex Dashboard</h1><p>Open it from the chat UI.</p>"
+
+
+async def _dashboard_ui(request):  # GET /dashboard -> detail dashboard
+    return HTMLResponse(_DASH_HTML, headers={"Cache-Control": "no-store"})
+
+
+app.add_route("/dashboard", _dashboard_ui, methods=["GET"])
+
 
 def _router_instance() -> Router:
     # Lazy build so a missing LLM key never blocks the health check / boot.

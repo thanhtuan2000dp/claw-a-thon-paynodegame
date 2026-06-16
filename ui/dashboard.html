@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Veridex Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#0a0e16; --panel:#161b27; --border:#1e2d45;
+      --accent:#22c55e; --cyan:#22d3ee; --violet:#a855f7;
+      --muted:#64748b; --text:#e2e8f0;
+      --grad:linear-gradient(135deg,#22c55e,#22d3ee,#a855f7);
+      --glass-bg:rgba(255,255,255,.05); --glass-bd:rgba(148,163,184,.18);
+      --up:#22c55e; --down:#f87171; --warn:#fbbf24;
+    }
+    body.light {
+      --bg:#eef2f7; --panel:#ffffff; --border:#dfe5ee; --muted:#64748b; --text:#0f172a;
+      --glass-bg:rgba(255,255,255,.78); --glass-bd:rgba(15,23,42,.10);
+    }
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; position: relative; overflow-x: hidden; }
+    .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+    .aurora span { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .32; will-change: transform; }
+    .aurora .a1 { width: 520px; height: 520px; top: -120px; left: -80px;  background: #22c55e; animation: drift1 16s ease-in-out infinite; }
+    .aurora .a2 { width: 460px; height: 460px; top: 30%;    right: -120px; background: #22d3ee; animation: drift2 18s ease-in-out infinite; }
+    .aurora .a3 { width: 420px; height: 420px; bottom: -140px; left: 35%;  background: #a855f7; animation: drift3 14s ease-in-out infinite; }
+    body.light .aurora span { opacity: .14; }
+    @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(60px,40px) scale(1.15); } }
+    @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,30px) scale(1.1); } }
+    @keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-50px) scale(1.2); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    header { position: sticky; top: 0; z-index: 10; padding: 12px 24px; border-bottom: 1px solid var(--border);
+             display: flex; align-items: center; gap: 12px; background: rgba(10,14,22,.55); backdrop-filter: blur(8px); }
+    body.light header { background: rgba(255,255,255,.7); }
+    header .orb { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+                  background: conic-gradient(from 0deg, #22c55e, #22d3ee, #a855f7, #22c55e);
+                  box-shadow: 0 0 14px rgba(34,211,238,.5); display: flex; align-items: center; justify-content: center;
+                  font-size: 13px; color: #04130a; animation: spin 8s linear infinite; }
+    header .wordmark { font-size: 18px; font-weight: 800; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    header .dsub { font-size: 12px; color: var(--muted); border-left: 1px solid var(--border); padding-left: 12px; }
+    header .meta { font-size: 12px; color: var(--muted); margin-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    header .spacer { margin-left: auto; }
+    .pillgroup { display: flex; gap: 6px; }
+    .pill { background-image: linear-gradient(var(--panel),var(--panel)), var(--grad); background-origin: border-box; background-clip: padding-box, border-box;
+            border: 1px solid transparent; color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+            text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: filter .15s ease; }
+    .pill:hover { filter: brightness(1.25); }
+    .pill.active { filter: brightness(1.4); box-shadow: inset 0 0 0 1px var(--accent); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding: 22px 24px; max-width: 1200px; margin: 0 auto; }
+    .card { background: var(--glass-bg); border: 1px solid var(--glass-bd); backdrop-filter: blur(6px); border-radius: 14px; padding: 16px; transition: transform .15s ease, border-color .15s ease; }
+    .card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .card.wide { grid-column: 1 / -1; }
+    .card.reveal { animation: revealUp .34s ease both; }
+    @keyframes revealUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .card .title { font-size: 13px; color: #93c5fd; font-weight: 600; margin-bottom: 10px; }
+    body.light .card .title { color: #2563eb; }
+    .storehead { font-size: 14px; font-weight: 700; padding: 6px 2px; color: var(--text); }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .value { font-size: 30px; font-weight: 800; margin-top: 4px; line-height: 1.1; word-break: break-word; }
+    .kpi .delta { font-size: 13px; font-weight: 700; margin-top: 6px; }
+    .kpi .delta.up { color: var(--up); } .kpi .delta.down { color: var(--down); } .kpi .delta.flat { color: var(--warn); }
+    canvas { max-height: 260px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+    th { background: rgba(10,14,22,.5); cursor: pointer; user-select: none; white-space: nowrap; }
+    body.light th { background: rgba(15,23,42,.05); }
+    .tfilter { width: 100%; margin-bottom: 8px; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+               border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit; }
+    .tfilter:focus { outline: none; border-color: var(--accent); }
+    .listw { list-style: none; }
+    .listw li { padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .listw li:last-child { border-bottom: none; }
+    .textw { font-size: 13px; line-height: 1.55; }
+    .textw img { height: 120px; border-radius: 8px; margin: 4px; }
+    .chartswitch { float: right; font-size: 11px; }
+    .empty { max-width: 520px; margin: 80px auto; text-align: center; }
+    @media (prefers-reduced-motion: reduce) {
+      .aurora span, header .orb { animation: none; }
+      .card.reveal { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
+  <header>
+    <span class="orb" aria-hidden="true">✦</span>
+    <span class="wordmark">Veridex</span>
+    <span class="dsub">Dashboard</span>
+    <div id="storeToggle" class="pillgroup" role="group" aria-label="Chọn store"></div>
+    <span class="meta" id="meta"></span>
+    <span class="spacer"></span>
+    <button class="pill" id="themeBtn" onclick="toggleTheme()" aria-label="Đổi giao diện sáng/tối">🌙</button>
+    <a class="pill" href="/" aria-label="Quay lại chat">← Chat</a>
+  </header>
+
+  <div id="grid" class="grid"></div>
+
+  <script>
+    marked.setOptions({ gfm: true, breaks: true });
+    const REDUCE = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const fmt = (v, d = 2) => v == null ? 'n/a' : (typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(d) : String(v));
+    const signed = (v, d = 2) => v == null ? 'n/a' : (v >= 0 ? '+' : '') + (typeof v === 'number' ? v.toFixed(d) : v);
+    const num = v => (typeof v === 'number') ? v.toLocaleString() : 'n/a';
+
+    // ---- theme ----
+    function applyTheme(t) {
+      document.body.classList.toggle('light', t === 'light');
+      document.getElementById('themeBtn').textContent = t === 'light' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+      const next = document.body.classList.contains('light') ? 'dark' : 'light';
+      localStorage.setItem('veridex_dash_theme', next);
+      applyTheme(next);
+    }
+
+    function showEmpty() {
+      document.getElementById('grid').innerHTML =
+        '<div class="card empty"><div class="title">Không có dữ liệu</div>' +
+        '<p class="textw">Mở dashboard từ khung chat: hỏi một app rồi bấm <b>📊 Mở dashboard</b>.</p>' +
+        '<p class="textw" style="margin-top:12px"><a class="pill" href="/">← Về chat</a></p></div>';
+    }
+
+    // Minimal render — replaced by the full engine in Task 3.
+    function renderDashboard(result, query) {
+      document.getElementById('meta').textContent = [result.app_query || (result.app && result.app.name) || '', result.use_case, query].filter(Boolean).join(' · ');
+      const host = document.getElementById('grid'); host.innerHTML = '';
+      host.appendChild(el('div', 'card wide', '<div class="title">Đã nhận dữ liệu</div><div class="textw">use_case: <b>' + esc(result.use_case || '?') + '</b></div><pre class="textw" style="white-space:pre-wrap;word-break:break-word">' + esc(JSON.stringify(result, null, 2)) + '</pre>'));
+    }
+
+    function init() {
+      applyTheme(localStorage.getItem('veridex_dash_theme') || 'dark');
+      const params = new URLSearchParams(location.search);
+      const id = params.get('d');
+      let payload = null;
+      if (id) { try { payload = JSON.parse(localStorage.getItem('veridex_dash_' + id)); } catch (e) {} }
+      if (!payload || !payload.result) { showEmpty(); return; }
+      renderDashboard(payload.result, payload.query || '');
+    }
+    init();
+  </script>
+</body>
+</html>
