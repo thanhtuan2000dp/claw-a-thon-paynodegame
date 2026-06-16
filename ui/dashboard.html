@@ -296,10 +296,108 @@
       if ((b.positioning || []).length) w.push({ kind: 'list', title: '📊 Định vị', items: b.positioning });
       return w;
     }
+    function buildUc1(b) {
+      const m = b.metadata || {}, rk = b.ranking || {}, h = b.history || {};
+      const w = [
+        { kind: 'kpi', label: 'Rating tổng', value: fmt(m.avg_rating), ...deltaOf(h.rating_delta, 3) },
+        { kind: 'kpi', label: 'Lượt rating', value: num(m.rating_count) },
+        { kind: 'kpi', label: 'Rank', value: rk.rank != null ? (rk.chart ? rk.chart + ' #' : '#') + rk.rank : 'n/a', ...rankDelta(h.rank_delta) },
+        { kind: 'kpi', label: 'Version', value: (m.version || '?') + (h.version_changed ? ' 🆕' : '') },
+        { kind: 'kpi', label: 'Giá', value: m.price || 'n/a' },
+      ];
+      w.push({ kind: 'table', title: 'Metadata', headers: ['Trường','Giá trị'], rows: [
+        ['Tên', m.name || '?'], ['Danh mục', m.category || 'n/a'], ['Giá', m.price || 'n/a'],
+        ['Version', m.version || '?'], ['Phát hành', m.release_date || '?'],
+        ['Rating', fmt(m.avg_rating)], ['Lượt rating', num(m.rating_count)], ['Rank', rk.rank != null ? '#' + rk.rank : 'n/a'],
+      ] });
+      const shots = m.screenshot_urls || [];
+      if (shots.length) w.push({ kind: 'text', title: 'Ảnh chụp', html: shots.slice(0, 6).map(u => '<img src="' + esc(u) + '" alt="">').join('') });
+      if (b.summary) w.push({ kind: 'text', title: 'Tóm tắt', html: marked.parse(b.summary) });
+      return w;
+    }
+    function buildUc3(b) {
+      const vs = b.versions || [], hl = b.highlights || [];
+      const w = [
+        { kind: 'kpi', label: 'Version hiện tại', value: b.current_version ? 'v' + b.current_version : '?' },
+        { kind: 'kpi', label: 'Số phiên bản', value: vs.length },
+      ];
+      if (hl.length) w.push({ kind: 'list', title: '✨ Điểm nổi bật', items: hl });
+      if (vs.length) w.push({ kind: 'table', title: 'Phiên bản', headers: ['Version','Phát hành','Ghi chú'],
+        rows: vs.map(v => ['v' + (v.version || '?'), String(v.release_date || v.first_seen || '?').split('T')[0], v.release_notes || '']) });
+      return w;
+    }
+    function buildUc6(b) {
+      const sig = b.signals || {}, v = b.verdict || 'inconclusive';
+      const VW = { healthy: '🟢 KHỎE', regression: '🔴 TỤT LÙI', inconclusive: '🟡 CHƯA KẾT LUẬN' };
+      const w = [
+        { kind: 'kpi', label: 'Kết luận', value: VW[v] || v },
+        { kind: 'kpi', label: 'Δ Rating', value: signed(sig.rating_delta), deltaDir: sig.rating_delta > 0 ? 'up' : sig.rating_delta < 0 ? 'down' : 'flat' },
+        { kind: 'kpi', label: 'Tỷ lệ tiêu cực (sau)', value: sig.negative_share_after != null ? Math.round(sig.negative_share_after) + '%' : 'n/a' },
+        { kind: 'kpi', label: 'Δ Review/ngày', value: signed(sig.velocity_delta_per_day) },
+      ];
+      if (sig.rating_before != null || sig.rating_after != null)
+        w.push({ kind: 'chart', title: 'Rating trước / sau', type: 'bar', labels: ['Trước','Sau'], data: [sig.rating_before, sig.rating_after] });
+      const iss = b.top_issues || [];
+      if (iss.length) {
+        w.push({ kind: 'chart', title: 'Nhóm vấn đề', type: 'bar', labels: iss.map(x => x.category), data: iss.map(x => x.count) });
+        w.push({ kind: 'list', title: 'Than phiền mới', items: iss.map(x => x.category + ' (' + x.count + ')') });
+      }
+      if (b.summary) w.push({ kind: 'text', title: 'Tóm tắt', html: marked.parse(b.summary) });
+      return w;
+    }
+    function buildUc8(b) {
+      const opp = b.opportunities || [], riv = b.competitors || [];
+      const w = [
+        { kind: 'kpi', label: 'Số cơ hội', value: opp.length },
+        { kind: 'kpi', label: 'Chủ đề hàng đầu', value: opp[0] ? opp[0].theme : 'n/a' },
+        { kind: 'kpi', label: 'Số đối thủ', value: riv.length },
+      ];
+      if (opp.length) {
+        w.push({ kind: 'chart', title: 'Phàn nàn theo chủ đề', type: 'bar', labels: opp.map(o => o.theme), data: opp.map(o => o.count) });
+        w.push({ kind: 'table', title: 'Cơ hội', headers: ['Chủ đề','Danh mục','Số phàn nàn','Đối thủ','Cơ hội'],
+          rows: opp.map(o => [o.theme, o.category || '', o.count, (o.competitors || []).join('; '), o.opportunity || '']) });
+      }
+      return w;
+    }
+    function buildUc9(b) {
+      const cur = b.current || {}, al = b.alerts || [], sevRank = { high: 3, medium: 2, info: 1 };
+      const maxSev = al.reduce((mx, a) => (sevRank[a.severity] || 0) > (sevRank[mx] || 0) ? a.severity : mx, 'info');
+      const sevIcon = { high: '🔴', medium: '🟡', info: '🔵' };
+      const w = [
+        { kind: 'kpi', label: 'Số cảnh báo', value: al.length, delta: al.length ? 'có biến động' : 'ổn định', deltaDir: al.length ? 'down' : 'up' },
+        { kind: 'kpi', label: 'Mức cao nhất', value: al.length ? maxSev : 'không' },
+        { kind: 'kpi', label: 'Rating hiện tại', value: fmt(cur.rating) },
+        { kind: 'kpi', label: 'Rank hiện tại', value: cur.rank != null ? '#' + cur.rank : 'n/a' },
+      ];
+      if (al.length) w.push({ kind: 'list', title: '🚨 Cảnh báo', items: al.map(a => (sevIcon[a.severity] || '•') + ' ' + a.message) });
+      else w.push({ kind: 'text', title: 'Trạng thái', html: marked.parse(b.summary || '✅ Ổn định') });
+      return w;
+    }
+    function buildUc10(b) {
+      const items = b.action_items || [], by = p => items.filter(i => (i.priority || '').toLowerCase() === p).length;
+      const tag = { high: '🔴', medium: '🟡', low: '⚪' };
+      const w = [
+        { kind: 'kpi', label: '🔴 Ưu tiên cao', value: by('high') },
+        { kind: 'kpi', label: '🟡 Trung bình', value: by('medium') },
+        { kind: 'kpi', label: '⚪ Thấp', value: by('low') },
+      ];
+      if (b.answer) w.push({ kind: 'text', title: 'Trả lời', html: marked.parse(b.answer) });
+      if (items.length) {
+        w.push({ kind: 'list', title: '✅ Hành động đề xuất', items: items.map(i => (tag[(i.priority || '').toLowerCase()] || '•') + ' ' + i.action + (i.rationale ? ' — ' + i.rationale : '')) });
+        w.push({ kind: 'table', title: 'Hành động', headers: ['Ưu tiên','Hành động','Lý do'], rows: items.map(i => [i.priority || '', i.action || '', i.rationale || '']) });
+      }
+      return w;
+    }
     const DASHBOARDS = {
+      uc1_store_metadata: buildUc1,
       uc2_reviews_sentiment: buildUc2,
+      uc3_version_changelog: buildUc3,
       uc4_kpi_dashboard: buildUc4,
+      uc6_version_impact: buildUc6,
       uc7_competitive_comparison: buildUc7,
+      uc8_competitor_weakness: buildUc8,
+      uc9_trend_alert: buildUc9,
+      uc10_insight_qa: buildUc10,
     };
     function buildGeneric(block) {
       const w = [];
