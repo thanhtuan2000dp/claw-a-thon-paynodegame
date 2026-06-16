@@ -9,6 +9,7 @@ Adding a use case to the ``usecases`` package makes it routable automatically.
 
 from __future__ import annotations
 
+import datetime
 import re
 
 from core.registry import discover_use_cases
@@ -266,21 +267,29 @@ class Router:
                 "rewrite params.statement to be self-contained — naming this app, the platform "
                 "(iOS/Android per store above), and the metric in context (e.g. reviews/rating).\n\n"
             )
+        today = datetime.date.today().isoformat()
         prompt = (
             "You route a user's message to ONE app-analytics action and extract its parameters.\n"
             "Choose the action whose description best matches the user's intent — the "
             "descriptions say what each action is and is NOT for.\n"
             f"Actions:\n{catalog_lines}\n\n"
             + context_block
+            + f"Today: {today}\n\n"
             + "Extract into params (omit a key if absent):\n"
             "- app: the app name, OR a store id copied VERBATIM (Android package e.g. "
             "com.zing.zalo, or iOS numeric trackId). Drop filler words ('ứng dụng', 'về', "
             "'phân tích', 'app'). NEVER invent or guess an app — use ONLY an app explicitly "
             "named in the message or in the recent context above; if there is none, OMIT app.\n"
             '- store: "ios", "android", or "both" (default "both" if no platform is named).\n'
-            '- window_days: integer days from any time phrase — "1 năm"/"1 year"=365, '
-            '"6 tháng"=180, "2 tuần"=14, "tháng này"/"last month"=30.\n'
-            "- date_from / date_to: ISO dates ONLY if the user gives explicit calendar dates.\n"
+            "- window_days: integer — ONLY for duration phrases (\"3 tháng gần nhất\"=90, "
+            "\"last 30 days\"=30, \"2 tuần\"=14, \"1 năm\"=365). Do NOT use for calendar-relative phrases.\n"
+            "- date_from / date_to: ISO date (YYYY-MM-DD). Use for:\n"
+            "    • explicit dates ('từ ngày 1/6', 'before 2026-05-01')\n"
+            "    • calendar-relative phrases, resolved using today above:\n"
+            "        'tháng này'/'this month' → date_from=first day of current month, date_to=today\n"
+            "        'tháng trước'/'last month' → date_from=first day of prior month, date_to=last day of prior month\n"
+            "        'năm nay'/'this year' → date_from=YYYY-01-01, date_to=today\n"
+            "        'Q1/Q2/Q3/Q4 YYYY' → appropriate quarter boundaries\n"
             "- country: 2-letter code only if explicitly mentioned.\n"
             "- statement: for hypothesis_check, the full context-resolved claim text.\n\n"
             f'User message: "{message}"\n\n'

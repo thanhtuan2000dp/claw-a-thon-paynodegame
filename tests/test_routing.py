@@ -46,3 +46,27 @@ def test_package_id_passthrough_and_filler_stripped():
     assert _heuristic_route("review com.zing.zalo")[1]["app"] == "com.zing.zalo"
     # "trở lại / về / ứng dụng" are filler, stripped from the app name
     assert _heuristic_route("phân tích đánh giá về ứng dụng zalo")[1]["app"] == "zalo"
+
+
+def test_route_nl_prompt_includes_today():
+    import datetime
+    from unittest.mock import MagicMock
+    from core.router import Router
+
+    captured = []
+    deps = MagicMock()
+    deps.llm.complete_json.side_effect = lambda p: (
+        captured.append(p) or {"action": "uc1_store_metadata", "params": {"app": "Zalo"}}
+    )
+
+    router = Router.__new__(Router)
+    router.deps = deps
+    router.use_cases = {
+        "uc1_store_metadata": MagicMock(name="uc1_store_metadata", description="UC1 metadata lookup"),
+    }
+    router._recent = {}
+
+    router._route_nl("KPI tháng này của Zalo")
+
+    today = datetime.date.today().isoformat()
+    assert today in captured[0], f"Expected today ({today}) in router prompt, got: {captured[0][:200]}"
