@@ -37,7 +37,7 @@ Hệ quả là quyết định dựa trên ý kiến và giai thoại thay vì b
 | **Product Manager** | Đánh giá nhanh, có bằng chứng về một bản phát hành; trả lời các câu hỏi mở "nên cải thiện gì?" kèm hành động ưu tiên. |
 | **Growth / Marketing** | So sánh đối thủ, theo dõi thứ hạng và cảm xúc review của app mình so với đối thủ. |
 | **C-level / lãnh đạo** | Một kết luận nhanh, trung thực về một giả thuyết ("feature X có làm tăng doanh thu không?") trước khi ra quyết định. |
-| **Bất kỳ ai theo dõi một app** | Tự đăng ký nhận cảnh báo qua Telegram khi app đang theo dõi bị tụt rating, tụt hạng, hoặc đổi phiên bản. |
+| **Bất kỳ ai theo dõi một app** | Tự đăng ký qua Telegram: **cảnh báo** khi app tụt rating/hạng hoặc đổi phiên bản, hoặc **báo cáo định kỳ** vào giờ đã chọn. |
 
 Tất cả đều có thể dùng **mà không cần đội phân tích** — chỉ cần hỏi bằng ngôn ngữ tự nhiên.
 
@@ -66,7 +66,7 @@ hoạch, viết diễn giải). Mọi báo cáo được kết xuất thành mar
 | **Cảnh báo bất thường** (`uc9_trend_alert`) | Phát hiện tụt rating, tụt hạng và đổi phiên bản từ lịch sử snapshot, kèm mức độ nghiêm trọng. |
 | **Hỏi đáp PM dạng mở** (`uc10_insight_qa`) | Tự lập kế hoạch và chạy các phân tích phù hợp, rồi tổng hợp câu trả lời có trích dẫn kèm hành động ưu tiên. |
 | **Kiểm tra giả thuyết** (`hypothesis_check`) | Đa lượt: kiểm tra một nhận định nhân quả ("rating giảm *do* bản cập nhật") và trả về kết luận có kiểm soát (gated), dựa trên bằng chứng. |
-| **Đăng ký cảnh báo** (`manage_subscription`) | Người dùng tự đăng ký app nào sẽ gửi cảnh báo về chat Telegram của họ, theo lịch nào. |
+| **Đăng ký theo dõi qua Telegram** (`manage_subscription`) | Người dùng tự đăng ký (panel 🔔 trên UI) nhận thông báo về Telegram của mình theo 2 chế độ — **Cảnh báo bất thường** (chỉ báo khi tụt rating/hạng hoặc đổi phiên bản; kiểm tự động hằng ngày) hoặc **Báo cáo định kỳ** (gửi tình hình app vào giờ đã chọn). Bộ lập lịch nội bộ tự chạy, không cần cron ngoài. |
 
 ### Giá trị
 
@@ -80,6 +80,15 @@ hoạch, viết diễn giải). Mọi báo cáo được kết xuất thành mar
 - **Song ngữ** — tự nhận diện tiếng Việt vs tiếng Anh và trả lời tương ứng.
 - **Không bao giờ làm sập runtime** — connector suy giảm mượt mà (thiếu một nguồn → báo cáo chỉ-có-chỉ-số,
   không bao giờ trả lỗi 500).
+
+### Cảnh báo & đăng ký theo dõi (qua Telegram)
+
+Bất kỳ ai cũng tự đăng ký theo dõi một app/game ngay trong giao diện chat (panel **🔔 Cảnh báo**) — chỉ cần `chat_id` Telegram của mình; **bot token là bí mật phía server**, người dùng không bao giờ chạm tới. Mỗi đăng ký chọn 1 trong 2 chế độ:
+
+- **🔔 Cảnh báo bất thường** — chỉ nhắn khi UC9 phát hiện biến động (tụt rating/hạng, đổi phiên bản). Được kiểm **tự động hằng ngày** — không cần chọn giờ.
+- **📊 Báo cáo định kỳ** — luôn gửi tình hình app (rating/hạng/phiên bản hiện tại + biến động nếu có) vào **giờ bạn chọn** (hằng ngày hoặc hằng tuần).
+
+Một **bộ lập lịch nội bộ chạy sẵn trong runtime** (bật mặc định, `ENABLE_SCHEDULER=0` để tắt) thực thi việc này — **không cần cron ngoài**. Telegram tự chặn gửi tới chat chưa `/start` bot nên không spam được người lạ; có nút **"Gửi thử"** để xác nhận kênh. Chưa cấu hình `TELEGRAM_BOT_TOKEN` thì chạy **dry-run** an toàn (ghi log, không gửi). *Lưu ý:* runtime AgentBase dùng đĩa ephemeral nên đăng ký reset sau mỗi lần redeploy.
 
 ---
 
@@ -196,9 +205,11 @@ cần sửa, vì `core/registry.py` tự động phát hiện bất cứ thứ g
 | `SENSORTOWER_AUTH_TOKEN` | Dữ liệu iOS cao cấp (tùy chọn); ngày token có quyền truy cập reviews, phân tích review iOS bật lên mà không cần sửa code. |
 | `DEFAULT_STORE` / `DEFAULT_COUNTRY` | Giá trị mặc định khi người dùng không chỉ định. |
 | `SNAPSHOT_DIR` / `CONVERSATION_DIR` / `SUBSCRIPTION_DIR` | Nơi lưu lịch sử — trỏ vào **volume bền vững (persistent)** để sống sót qua các lần redeploy. |
-| `ENABLE_SCHEDULER` / `SCHEDULER_INTERVAL_SECONDS` | Bật bộ lập lịch cảnh báo nội bộ (mặc định tắt). |
-| `WATCHLIST_FILE` / `ALERT_WATCHLIST` | Các app mà chu kỳ cảnh báo theo dõi (ví dụ `"Zalo\|both\|vi, com.spotify.music\|android"`). |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `ALERT_TZ` | Gửi cảnh báo (không có token = chế độ dry-run an toàn, chỉ ghi log thay vì gửi). |
+| `ENABLE_SCHEDULER` / `SCHEDULER_INTERVAL_SECONDS` | Bộ lập lịch watch nội bộ **chạy mặc định** (poll mỗi 300s); đặt `ENABLE_SCHEDULER=0` để tắt (vd nhiều replica + cron ngoài). |
+| `ALERT_TZ` / `ALERT_DEFAULT_HOUR` | Múi giờ tính lịch (mặc định `Asia/Ho_Chi_Minh`) + giờ kiểm hằng ngày cho đăng ký chế độ "cảnh báo" (mặc định 9). |
+| `ALERT_MAX_SUBS` / `ALERT_MAX_SUBS_PER_CHAT` | Giới hạn số đăng ký (mặc định 200 toàn hệ thống / 20 mỗi chat). |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Gửi Telegram — token là bí mật server; `chat_id` mỗi user khai trong UI. Không có token = dry-run an toàn (chỉ ghi log). |
+| `WATCHLIST_FILE` / `ALERT_WATCHLIST` | Watchlist toàn cục (operator) cho chu kỳ cảnh báo (ví dụ `"Zalo\|both\|vi, com.spotify.music\|android"`). |
 
 ### Điều chỉnh logic phân tích
 - **Ngưỡng kết luận (verdict thresholds)** cho kiểm tra sức khỏe bản phát hành là các hằng số module ở

@@ -30,6 +30,7 @@ class Subscription:
     freq: str = "daily"                # daily | weekly
     hour: int = 9                      # local hour 0-23 (in ALERT_TZ)
     weekday: Optional[int] = None      # 0=Mon..6=Sun, required for weekly
+    mode: str = "alert"                # alert = only on anomaly | digest = always report at the scheduled hour
     label: Optional[str] = None        # optional human label
     active: bool = True
     created_at: Optional[str] = None   # ISO timestamp

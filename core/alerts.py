@@ -133,7 +133,7 @@ def _one_block(res: dict) -> Optional[str]:
 
 def format_uc9_alert(res: dict) -> Optional[str]:
     """Build the alert message for a UC9 result (single-store or cross_platform).
-    Returns None when the result carries no anomalies."""
+    Returns None when the result carries no anomalies (alert-mode subscriptions)."""
     if res.get("mode") == "cross_platform":
         blocks = [b for b in (_one_block(p) for p in (res.get("platforms") or {}).values()) if b]
         if not blocks:
@@ -143,3 +143,45 @@ def format_uc9_alert(res: dict) -> Optional[str]:
                   else f"⚠️ {res.get('app_query', 'app')} — anomalies detected")
         return "\n\n".join([header, *blocks])
     return _one_block(res)
+
+
+def _one_digest(res: dict) -> Optional[str]:
+    """A status report for one app — current metrics + any anomalies. Always
+    returns a message (unless the result is an error)."""
+    if res.get("error"):
+        return None
+    vi = res.get("lang") == "vi"
+    app = res.get("app") or {}
+    name, store = app.get("name") or "?", app.get("store") or "?"
+    cur = res.get("current") or {}
+    alerts = res.get("alerts") or []
+    icon = _SEV_ICON.get(_top_severity(alerts), "📊") if alerts else "📊"
+    bits = []
+    if cur.get("rating") is not None:
+        bits.append(f"rating {cur['rating']}")
+    if cur.get("rank") is not None:
+        bits.append(f"{(cur.get('rank_chart') or 'rank')} #{cur['rank']}")
+    if cur.get("version"):
+        bits.append(f"v{cur['version']}")
+    lines = [f"{icon} {name} ({store})"]
+    if bits:
+        lines.append(" · ".join(bits))
+    if alerts:
+        lines += [f"• [{(a.get('severity') or '?').upper()}] {a.get('message', '')}" for a in alerts]
+    else:
+        lines.append("Không có bất thường." if vi else "No anomalies.")
+    return "\n".join(lines)
+
+
+def format_uc9_digest(res: dict) -> Optional[str]:
+    """Build a periodic status report for a UC9 result — ALWAYS returns a message
+    (current metrics + any anomalies), for digest-mode subscriptions. None only on
+    a hard error."""
+    if res.get("mode") == "cross_platform":
+        blocks = [b for b in (_one_digest(p) for p in (res.get("platforms") or {}).values()) if b]
+        if not blocks:
+            return None
+        vi = res.get("lang") == "vi"
+        header = f"📊 {res.get('app_query', 'app')}" + (" — báo cáo" if vi else " — report")
+        return "\n\n".join([header, *blocks])
+    return _one_digest(res)

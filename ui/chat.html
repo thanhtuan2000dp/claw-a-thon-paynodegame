@@ -102,12 +102,16 @@
           <select id="subStore"><option value="ios">iOS</option><option value="android">Android</option><option value="both">Cả hai</option></select>
         </div>
         <div class="afield">
+          <label>Loại</label>
+          <select id="subMode" onchange="subModeChange()"><option value="alert">Cảnh báo bất thường</option><option value="digest">Báo cáo định kỳ</option></select>
+        </div>
+        <div class="afield">
           <label>Ngôn ngữ</label>
           <select id="subLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
         </div>
       </div>
       <div class="arow">
-        <div class="afield">
+        <div class="afield" id="freqRow">
           <label>Tần suất</label>
           <select id="subFreq" onchange="subFreqChange()"><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần</option></select>
         </div>
@@ -115,7 +119,7 @@
           <label>Thứ</label>
           <select id="subWeekday"></select>
         </div>
-        <div class="afield">
+        <div class="afield" id="hourRow">
           <label>Giờ nhận</label>
           <select id="subHour"></select>
         </div>
@@ -359,6 +363,15 @@
       document.getElementById('weekdayRow').style.display =
         document.getElementById('subFreq').value === 'weekly' ? 'flex' : 'none';
     }
+    // Time only matters for a digest (when to send). Alert is checked daily
+    // automatically, so hide the schedule controls for it.
+    function subModeChange() {
+      const digest = document.getElementById('subMode').value === 'digest';
+      document.getElementById('freqRow').style.display = digest ? 'flex' : 'none';
+      document.getElementById('hourRow').style.display = digest ? 'flex' : 'none';
+      document.getElementById('weekdayRow').style.display =
+        (digest && document.getElementById('subFreq').value === 'weekly') ? 'flex' : 'none';
+    }
     function _val(id) { return document.getElementById(id).value.trim(); }
     // kind: 'ok' (green ✓) | 'err' (red ✗) | 'info' (amber ⓘ)
     function _subStatus(msg, kind) {
@@ -396,7 +409,8 @@
     }
     function _subFields() {
       return { chat_id: _val('subChat'), app: _val('subApp'), store: _val('subStore'),
-               freq: _val('subFreq'), hour: _val('subHour'), weekday: _val('subWeekday'), lang: _val('subLang') };
+               freq: _val('subFreq'), hour: _val('subHour'), weekday: _val('subWeekday'),
+               mode: _val('subMode'), lang: _val('subLang') };
     }
     function _loadList(chat) {
       return subCall({ op: 'list', chat_id: chat }).then(r => {
@@ -407,7 +421,8 @@
           const when = s.freq === 'weekly'
             ? (_DAYS[(s.weekday ?? 0)] + ' ' + _pad(s.hour) + ':00')
             : ('hằng ngày ' + _pad(s.hour) + ':00');
-          return `<div class="subrow fade-in" style="animation-delay:${i * 40}ms"><span>${_esc(s.app)} · ${s.store} · ${when}</span>`
+          const mode = s.mode === 'digest' ? '📊 báo cáo' : '🔔 cảnh báo';
+          return `<div class="subrow fade-in" style="animation-delay:${i * 40}ms"><span>${_esc(s.app)} · ${s.store} · ${when} · ${mode}</span>`
                + `<button class="dlbtn" onclick="subDelete(this,'${s.id}','${_esc(chat)}')">Xoá</button></div>`;
         }).join('');
         return r;
@@ -455,6 +470,7 @@
       Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === 9 ? ' selected' : ''}>${_pad(h)}:00</option>`).join('');
     document.getElementById('subWeekday').innerHTML =
       _DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
+    subModeChange();  // default mode = alert → hide the time controls
 
     bubble('bot', marked.parse(
       '**Veridex — App Intelligence Agent**\n\n' +
