@@ -143,15 +143,15 @@
     .toast.out { animation: toastOut .25s ease forwards; }
     @keyframes toastIn  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
     @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
-    @media (prefers-reduced-motion: reduce) { .toast, .toast.out { animation: none; } }
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade-in { animation: fadeInUp .25s ease both; }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .subrow.removing { animation: rowOut .2s ease forwards; }
     @keyframes rowOut { to { opacity: 0; transform: translateX(10px); } }
     @media (prefers-reduced-motion: reduce) {
-      .spinner, .fade-in, .subrow.removing { animation: none; }
-      .aurora span, header .orb, header .live .dot, .hero .bigorb, .msg.bot .av, .dots i, .reveal { animation: none; }
+      .spinner, .fade-in, .subrow.removing,
+      .aurora span, header .orb, header .live .dot, .hero .bigorb, .msg.bot .av,
+      .dots i, .reveal, .toast, .toast.out, #scrollBtn.show { animation: none; }
       #drawerBackdrop, .drawer { transition: none; }
     }
   </style>
@@ -228,7 +228,7 @@
   <footer>
     <div class="inputbar">
       <textarea id="input" rows="1" placeholder="Hỏi về một app hoặc game: review, KPI, đối thủ, cảnh báo… — hoặc nêu giả thuyết để kiểm chứng…"></textarea>
-      <button id="send" onclick="send()">Gửi</button>
+      <button id="send" onclick="send()" aria-label="Gửi">Gửi</button>
     </div>
   </footer>
 
