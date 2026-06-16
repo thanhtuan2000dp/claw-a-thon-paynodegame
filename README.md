@@ -12,6 +12,37 @@ Bạn có thể trò chuyện với agent qua **giao diện chat web tích hợp
 
 ---
 
+## Screenshots
+
+### Giao diện chat chính
+
+| Dark mode | Light mode |
+|---|---|
+| ![Chat UI dark](docs/screenshots/01-chat-ui.png) | ![Chat UI light](docs/screenshots/07-chat-ui-light.png) |
+
+### Panel đăng ký cảnh báo Telegram
+
+![Alert panel](docs/screenshots/02-alert-panel.png)
+
+### Agent đang xử lý truy vấn & trả kết quả phân tích review
+| Đang xử lý | Kết quả (charts inline) |
+|---|---|
+| ![Query in progress](docs/screenshots/03-review-prompt.png) | ![Agent response with charts](docs/screenshots/04-agent-response.png) |
+
+### Dashboard chi tiết — Review & Sentiment
+
+| Dark mode | Light mode |
+|---|---|
+| ![Dashboard reviews dark](docs/screenshots/05-dashboard-reviews.png) | ![Dashboard reviews light](docs/screenshots/09-dashboard-reviews-light.png) |
+
+### Dashboard chi tiết — KPI cross-platform (iOS + Android)
+
+| Dark mode | Light mode |
+|---|---|
+| ![Dashboard KPI dark](docs/screenshots/06-dashboard-kpi.png) | ![Dashboard KPI light](docs/screenshots/10-dashboard-kpi-light.png) |
+
+---
+
 ## 1. Bài toán (Problem)
 
 Product Manager và lãnh đạo liên tục đưa ra nhận định về một bản phát hành hay một thị trường —
