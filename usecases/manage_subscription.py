@@ -19,6 +19,7 @@ from usecases.base import UseCase
 
 _FREQS = ("daily", "weekly")
 _STORES = ("ios", "android", "both")
+_MODES = ("alert", "digest")
 _DEFAULT_MAX = 200
 _DEFAULT_MAX_PER_CHAT = 20
 
@@ -49,6 +50,7 @@ class ManageSubscriptionUseCase(UseCase):
         "freq": "daily | weekly (default daily)",
         "hour": "local hour 0-23 in ALERT_TZ (default 9)",
         "weekday": "0=Mon..6=Sun (required when freq=weekly)",
+        "mode": "alert (only on anomaly) | digest (always report at the scheduled hour) — default alert",
         "lang": "vi | en — alert + UI language",
         "id": "subscription id (delete)",
     }
@@ -77,15 +79,25 @@ class ManageSubscriptionUseCase(UseCase):
         store = (params.get("store") or "ios").lower()
         if store not in _STORES:
             store = "ios"
-        freq = (params.get("freq") or "daily").lower()
-        if freq not in _FREQS:
-            freq = "daily"
-        hour = max(0, min(23, _as_int(params.get("hour"), 9)))
-        weekday = None
-        if freq == "weekly":
-            weekday = _as_int(params.get("weekday"), 0)
-            if not 0 <= weekday <= 6:
-                return self._err(self.name, "weekday phải 0-6 (T2-CN)" if vi else "weekday must be 0-6 (Mon-Sun)")
+        mode = (params.get("mode") or "alert").lower()
+        if mode not in _MODES:
+            mode = "alert"
+
+        # Time only matters for a digest (when to send the report). An alert is
+        # checked once a day at a system-default hour — the user never picks a time.
+        if mode == "digest":
+            freq = (params.get("freq") or "daily").lower()
+            if freq not in _FREQS:
+                freq = "daily"
+            hour = max(0, min(23, _as_int(params.get("hour"), 9)))
+            weekday = None
+            if freq == "weekly":
+                weekday = _as_int(params.get("weekday"), 0)
+                if not 0 <= weekday <= 6:
+                    return self._err(self.name, "weekday phải 0-6 (T2-CN)" if vi else "weekday must be 0-6 (Mon-Sun)")
+        else:  # alert: daily check at the default hour, no user-chosen time
+            freq, weekday = "daily", None
+            hour = max(0, min(23, _as_int(os.environ.get("ALERT_DEFAULT_HOUR"), 9)))
 
         max_total = _as_int(os.environ.get("ALERT_MAX_SUBS"), _DEFAULT_MAX)
         max_chat = _as_int(os.environ.get("ALERT_MAX_SUBS_PER_CHAT"), _DEFAULT_MAX_PER_CHAT)
@@ -99,13 +111,17 @@ class ManageSubscriptionUseCase(UseCase):
         sub = Subscription(
             chat_id=chat_id, app=app, store=store,
             lang=(params.get("lang") or None), country=(params.get("country") or None),
-            freq=freq, hour=hour, weekday=weekday, label=(params.get("label") or None),
+            freq=freq, hour=hour, weekday=weekday, mode=mode, label=(params.get("label") or None),
             created_at=_now_iso(),
         )
         deps.subscriptions.add(sub)
-        when = self._when_text(sub, vi)
-        msg = (f"Đã đăng ký cảnh báo '{app}' ({store}), {when}." if vi
-               else f"Subscribed to '{app}' ({store}) alerts, {when}.")
+        if mode == "digest":
+            when = self._when_text(sub, vi)
+            msg = (f"Đã đăng ký báo cáo định kỳ '{app}' ({store}), {when}." if vi
+                   else f"Subscribed to '{app}' ({store}) periodic report, {when}.")
+        else:
+            msg = (f"Đã bật cảnh báo bất thường cho '{app}' ({store}) — kiểm tra hằng ngày, báo khi có biến động." if vi
+                   else f"Anomaly alerts enabled for '{app}' ({store}) — checked daily, notified on changes.")
         return {"use_case": self.name, "op": "create", "status": "success",
                 "subscription": _public(sub), "message": msg}
 
@@ -160,7 +176,7 @@ class ManageSubscriptionUseCase(UseCase):
 def _public(sub: Subscription) -> dict:
     """A subscription as returned to the UI — same fields (chat_id is the user's own)."""
     return {"id": sub.id, "app": sub.app, "store": sub.store, "chat_id": sub.chat_id,
-            "freq": sub.freq, "hour": sub.hour, "weekday": sub.weekday,
+            "freq": sub.freq, "hour": sub.hour, "weekday": sub.weekday, "mode": sub.mode,
             "lang": sub.lang, "label": sub.label, "active": sub.active,
             "last_sent": sub.last_sent}
 

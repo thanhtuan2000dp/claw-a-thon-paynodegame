@@ -26,7 +26,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from core.alerts import Notifier, format_uc9_alert, make_notifier
+from core.alerts import Notifier, format_uc9_alert, format_uc9_digest, make_notifier
 from storage.subscriptions import Subscription
 from usecases.uc9_trend_alert import TrendAlertUseCase
 
@@ -60,7 +60,8 @@ def due_subscriptions(deps, now: Optional[datetime] = None) -> list[dict]:
     out: list[dict] = []
     for sub in deps.subscriptions.all_active():
         if _is_due(sub, now):
-            entry = {"app": sub.app, "store": sub.store, "chat_id": sub.chat_id, "_sub_id": sub.id}
+            entry = {"app": sub.app, "store": sub.store, "chat_id": sub.chat_id,
+                     "_sub_id": sub.id, "mode": sub.mode}
             if sub.lang:
                 entry["lang"] = sub.lang
             if sub.country:
@@ -132,7 +133,9 @@ def run_watch_cycle(deps, notifier: Notifier, watchlist: list[dict],
             results.append({"app": entry["app"], "store": entry.get("store"), "sub_id": entry.get("_sub_id"),
                             "uc_status": "error", "delivery": {"status": "error", "error": str(exc)}})
             continue
-        msg = format_uc9_alert(res)
+        # digest subscriptions always get a report; alert subscriptions only on an anomaly.
+        fmt = format_uc9_digest if entry.get("mode") == "digest" else format_uc9_alert
+        msg = fmt(res)
         delivery = notifier.send(msg, chat_id=entry.get("chat_id")) if msg else {"status": "no_alert"}
         results.append({"app": entry["app"], "store": entry.get("store"), "sub_id": entry.get("_sub_id"),
                         "uc_status": _uc_status(res), "delivery": delivery})

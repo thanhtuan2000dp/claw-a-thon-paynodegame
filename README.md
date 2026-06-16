@@ -37,7 +37,7 @@ Hệ quả là quyết định dựa trên ý kiến và giai thoại thay vì b
 | **Product Manager** | Đánh giá nhanh, có bằng chứng về một bản phát hành; trả lời các câu hỏi mở "nên cải thiện gì?" kèm hành động ưu tiên. |
 | **Growth / Marketing** | So sánh đối thủ, theo dõi thứ hạng và cảm xúc review của app mình so với đối thủ. |
 | **C-level / lãnh đạo** | Một kết luận nhanh, trung thực về một giả thuyết ("feature X có làm tăng doanh thu không?") trước khi ra quyết định. |
-| **Bất kỳ ai theo dõi một app** | Tự đăng ký nhận cảnh báo qua Telegram khi app đang theo dõi bị tụt rating, tụt hạng, hoặc đổi phiên bản. |
+| **Bất kỳ ai theo dõi một app** | Tự đăng ký qua Telegram: **cảnh báo** khi app tụt rating/hạng hoặc đổi phiên bản, hoặc **báo cáo định kỳ** vào giờ đã chọn. |
 
 Tất cả đều có thể dùng **mà không cần đội phân tích** — chỉ cần hỏi bằng ngôn ngữ tự nhiên.
 
@@ -56,17 +56,17 @@ hoạch, viết diễn giải). Mọi báo cáo được kết xuất thành mar
 
 | Năng lực | Trả lời câu hỏi gì |
 |---|---|
-| **Metadata & thứ hạng store** (`uc1_store_metadata`) | Thông tin listing hiện tại + thứ hạng bảng xếp hạng iOS — danh mục, giá, phiên bản, rating — và những gì đã thay đổi so với lần chụp (snapshot) gần nhất. |
-| **Review & cảm xúc** (`uc2_reviews_sentiment`) | Trong một khoảng thời gian: số lượng review, phân bố sao, tỉ lệ ngôn ngữ, cảm xúc, xu hướng theo tuần, cụm chủ đề khen/chê. |
-| **Lịch sử phiên bản** (`uc3_version_changelog`) | Dòng thời gian các phiên bản kèm ngày phát hành và ghi chú phát hành (release notes). |
-| **Dashboard KPI / xu hướng** (`uc4_kpi_dashboard`) | Rating, thứ hạng, số lượng đánh giá và phiên bản theo thời gian từ snapshot đã lưu, kèm chênh lệch đầu→cuối. |
-| **Kiểm tra sức khỏe bản phát hành** (`uc6_version_impact`) | So sánh rating, tốc độ review và tỉ lệ tiêu cực **trước vs sau** bản phát hành mới nhất → 🟢 ổn / 🔴 hồi quy / 🟡 chưa kết luận. |
-| **So sánh cạnh tranh** (`uc7_competitive_comparison`) | Đối đầu trực tiếp với đối thủ cùng danh mục về thứ hạng, rating, số lượng đánh giá, giá, phiên bản và hoạt động phát hành gần đây. |
-| **Khai thác điểm yếu đối thủ** (`uc8_competitor_weakness`) | Gom cụm các điểm đau từ review tiêu cực của đối thủ thành danh sách cơ hội được ưu tiên, kèm trích dẫn bằng chứng. |
-| **Cảnh báo bất thường** (`uc9_trend_alert`) | Phát hiện tụt rating, tụt hạng và đổi phiên bản từ lịch sử snapshot, kèm mức độ nghiêm trọng. |
-| **Hỏi đáp PM dạng mở** (`uc10_insight_qa`) | Tự lập kế hoạch và chạy các phân tích phù hợp, rồi tổng hợp câu trả lời có trích dẫn kèm hành động ưu tiên. |
-| **Kiểm tra giả thuyết** (`hypothesis_check`) | Đa lượt: kiểm tra một nhận định nhân quả ("rating giảm *do* bản cập nhật") và trả về kết luận có kiểm soát (gated), dựa trên bằng chứng. |
-| **Đăng ký cảnh báo** (`manage_subscription`) | Người dùng tự đăng ký app nào sẽ gửi cảnh báo về chat Telegram của họ, theo lịch nào. |
+| **Metadata & thứ hạng store** | Thông tin listing hiện tại + thứ hạng bảng xếp hạng iOS — danh mục, giá, phiên bản, rating — và những gì đã thay đổi so với lần chụp (snapshot) gần nhất. |
+| **Review & cảm xúc** | Trong một khoảng thời gian: số lượng review, phân bố sao, tỉ lệ ngôn ngữ, cảm xúc, xu hướng theo tuần, cụm chủ đề khen/chê. |
+| **Lịch sử phiên bản** | Dòng thời gian các phiên bản kèm ngày phát hành và ghi chú phát hành (release notes). |
+| **Dashboard KPI / xu hướng** | Rating, thứ hạng, số lượng đánh giá và phiên bản theo thời gian từ snapshot đã lưu, kèm chênh lệch đầu→cuối. |
+| **Kiểm tra sức khỏe bản phát hành** | So sánh rating, tốc độ review và tỉ lệ tiêu cực **trước vs sau** bản phát hành mới nhất → 🟢 ổn / 🔴 hồi quy / 🟡 chưa kết luận. |
+| **So sánh cạnh tranh** | Đối đầu trực tiếp với đối thủ cùng danh mục về thứ hạng, rating, số lượng đánh giá, giá, phiên bản và hoạt động phát hành gần đây. |
+| **Khai thác điểm yếu đối thủ** | Gom cụm các điểm đau từ review tiêu cực của đối thủ thành danh sách cơ hội được ưu tiên, kèm trích dẫn bằng chứng. |
+| **Cảnh báo bất thường** | Phát hiện tụt rating, tụt hạng và đổi phiên bản từ lịch sử snapshot, kèm mức độ nghiêm trọng. |
+| **Hỏi đáp PM dạng mở** | Tự lập kế hoạch và chạy các phân tích phù hợp, rồi tổng hợp câu trả lời có trích dẫn kèm hành động ưu tiên. |
+| **Kiểm tra giả thuyết** | Đa lượt: kiểm tra một nhận định nhân quả ("rating giảm *do* bản cập nhật") và trả về kết luận có kiểm soát (gated), dựa trên bằng chứng. |
+| **Đăng ký theo dõi qua Telegram** | Người dùng tự đăng ký (panel 🔔 trên UI) nhận thông báo về Telegram của mình theo 2 chế độ — **Cảnh báo bất thường** (chỉ báo khi tụt rating/hạng hoặc đổi phiên bản; kiểm tự động hằng ngày) hoặc **Báo cáo định kỳ** (gửi tình hình app vào giờ đã chọn). Bộ lập lịch nội bộ tự chạy, không cần cron ngoài. |
 
 ### Giá trị
 
@@ -80,6 +80,15 @@ hoạch, viết diễn giải). Mọi báo cáo được kết xuất thành mar
 - **Song ngữ** — tự nhận diện tiếng Việt vs tiếng Anh và trả lời tương ứng.
 - **Không bao giờ làm sập runtime** — connector suy giảm mượt mà (thiếu một nguồn → báo cáo chỉ-có-chỉ-số,
   không bao giờ trả lỗi 500).
+
+### Cảnh báo & đăng ký theo dõi (qua Telegram)
+
+Bất kỳ ai cũng tự đăng ký theo dõi một app/game ngay trong giao diện chat (panel **🔔 Cảnh báo**) — chỉ cần `chat_id` Telegram của mình; **bot token là bí mật phía server**, người dùng không bao giờ chạm tới. Mỗi đăng ký chọn 1 trong 2 chế độ:
+
+- **🔔 Cảnh báo bất thường** — chỉ nhắn khi UC9 phát hiện biến động (tụt rating/hạng, đổi phiên bản). Được kiểm **tự động hằng ngày** — không cần chọn giờ.
+- **📊 Báo cáo định kỳ** — luôn gửi tình hình app (rating/hạng/phiên bản hiện tại + biến động nếu có) vào **giờ bạn chọn** (hằng ngày hoặc hằng tuần).
+
+Một **bộ lập lịch nội bộ chạy sẵn trong runtime** (bật mặc định, `ENABLE_SCHEDULER=0` để tắt) thực thi việc này — **không cần cron ngoài**. Telegram tự chặn gửi tới chat chưa `/start` bot nên không spam được người lạ; có nút **"Gửi thử"** để xác nhận kênh. Chưa cấu hình `TELEGRAM_BOT_TOKEN` thì chạy **dry-run** an toàn (ghi log, không gửi). *Lưu ý:* runtime AgentBase dùng đĩa ephemeral nên đăng ký reset sau mỗi lần redeploy.
 
 ---
 
@@ -187,18 +196,20 @@ cần sửa, vì `core/registry.py` tự động phát hiện bất cứ thứ g
 | **Một framework phân tích mới** | File mới trong `frameworks/` kế thừa `Framework` (dùng bởi Hypothesis Checker). |
 | **Một kênh đầu ra mới** | File mới trong `outputs/` kế thừa `OutputChannel`. |
 
-### Điều chỉnh hành vi (cấu hình trong `.env`)
+### Điều chỉnh hành vi (biến môi trường — phần lớn là tùy chọn)
+
+Chỉ **`LLM_*` là bắt buộc** (đặt trong `.env`). Mọi biến còn lại đều **có giá trị mặc định trong code** — chúng **không có sẵn trong `.env`/`.env.example`**; bạn chỉ thêm vào `.env` khi muốn **ghi đè** default (không thêm = dùng mặc định, agent vẫn chạy đủ).
+
 | Biến | Tác dụng |
 |---|---|
-| `LLM_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` | Dùng mô hình + endpoint GreenNode MaaS nào (**bắt buộc**). |
+| `LLM_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` | Dùng mô hình + endpoint GreenNode MaaS nào (**bắt buộc** — biến duy nhất phải có trong `.env`). |
 | `LLM_TIMEOUT` / `LLM_MAX_RETRIES` | Chờ MaaS chậm bao lâu trước khi suy giảm (mặc định 60s / 0). |
 | `HYPOTHESIS_ENSEMBLE_MODELS` | Danh sách mô hình MaaS (ngăn cách bằng dấu phẩy) để biểu quyết đa số kết luận giả thuyết (bỏ trống = một mô hình). |
 | `SENSORTOWER_AUTH_TOKEN` | Dữ liệu iOS cao cấp (tùy chọn); ngày token có quyền truy cập reviews, phân tích review iOS bật lên mà không cần sửa code. |
 | `DEFAULT_STORE` / `DEFAULT_COUNTRY` | Giá trị mặc định khi người dùng không chỉ định. |
-| `SNAPSHOT_DIR` / `CONVERSATION_DIR` / `SUBSCRIPTION_DIR` | Nơi lưu lịch sử — trỏ vào **volume bền vững (persistent)** để sống sót qua các lần redeploy. |
-| `ENABLE_SCHEDULER` / `SCHEDULER_INTERVAL_SECONDS` | Bật bộ lập lịch cảnh báo nội bộ (mặc định tắt). |
-| `WATCHLIST_FILE` / `ALERT_WATCHLIST` | Các app mà chu kỳ cảnh báo theo dõi (ví dụ `"Zalo\|both\|vi, com.spotify.music\|android"`). |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `ALERT_TZ` | Gửi cảnh báo (không có token = chế độ dry-run an toàn, chỉ ghi log thay vì gửi). |
+| `TELEGRAM_BOT_TOKEN` | Bật gửi Telegram cho cảnh báo — token là bí mật server; `chat_id` mỗi user khai trong UI. Không có token = dry-run an toàn (chỉ ghi log). |
+
+> Các biến nâng cao về **lập lịch, cảnh báo và thư mục lưu trữ** (vd `ENABLE_SCHEDULER`, `ALERT_TZ`, `*_DIR`…) đều có **default hợp lý — không cần đặt**. Danh sách đầy đủ + giá trị mặc định xem trong `CLAUDE.md`.
 
 ### Điều chỉnh logic phân tích
 - **Ngưỡng kết luận (verdict thresholds)** cho kiểm tra sức khỏe bản phát hành là các hằng số module ở

@@ -72,10 +72,20 @@ def test_usecase_create_and_list():
     deps = _deps_with_subs()
     uc = ManageSubscriptionUseCase()
     r = uc.run({"op": "create", "chat_id": "C1", "app": "zalopay", "store": "ios",
-                "freq": "daily", "hour": "8", "lang": "vi"}, deps)
-    assert r["status"] == "success" and r["subscription"]["hour"] == 8
+                "mode": "digest", "freq": "daily", "hour": "8", "lang": "vi"}, deps)
+    assert r["status"] == "success" and r["subscription"]["hour"] == 8  # digest honors the hour
     listed = uc.run({"op": "list", "chat_id": "C1"}, deps)
     assert len(listed["subscriptions"]) == 1
+
+
+def test_alert_mode_ignores_user_time(monkeypatch):
+    monkeypatch.delenv("ALERT_DEFAULT_HOUR", raising=False)
+    deps = _deps_with_subs()
+    # Alert mode: user time inputs are ignored — daily check at the default hour (9).
+    s = ManageSubscriptionUseCase().run(
+        {"op": "create", "chat_id": "C1", "app": "zalo", "mode": "alert",
+         "freq": "weekly", "weekday": "3", "hour": "23"}, deps)["subscription"]
+    assert s["mode"] == "alert" and s["freq"] == "daily" and s["hour"] == 9 and s["weekday"] is None
 
 
 def test_usecase_requires_chat_and_app():
@@ -150,6 +160,41 @@ def test_background_scheduler_can_be_disabled(monkeypatch):
     monkeypatch.setenv("ENABLE_SCHEDULER", "0")               # explicit opt-out
     from scheduler.watch import start_background_scheduler
     assert start_background_scheduler(_deps_with_subs()) is None
+
+
+def test_digest_formatter_always_reports():
+    from core.alerts import format_uc9_alert, format_uc9_digest
+    ok = {"use_case": "uc9_trend_alert", "lang": "vi", "status": "ok",
+          "app": {"name": "Zalo", "store": "ios"},
+          "current": {"rating": 4.5, "rank": 3, "rank_chart": "Top Free", "version": "9.0"},
+          "baseline_date": "2026-06-15", "alerts": []}
+    assert format_uc9_alert(ok) is None          # alert-mode: nothing when stable
+    msg = format_uc9_digest(ok)                   # digest-mode: always a report
+    assert msg and "Zalo (ios)" in msg and "rating 4.5" in msg and "Không có bất thường" in msg
+
+
+def test_usecase_create_digest_mode():
+    deps = _deps_with_subs()
+    r = ManageSubscriptionUseCase().run(
+        {"op": "create", "chat_id": "C1", "app": "zalo", "mode": "digest"}, deps)
+    assert r["status"] == "success" and r["subscription"]["mode"] == "digest"
+
+
+def test_subscription_cycle_digest_delivers_when_stable():
+    # FakeMeta rating 1.95 == prior snapshot → no anomaly. Alert-mode would stay
+    # silent; digest-mode must still deliver a report.
+    now = datetime(2026, 6, 15, 9, 0, 0)
+    snap = SnapshotStore(tempfile.mkdtemp())
+    snap.save(Snapshot(captured_at="2026-06-01", app_id="999", store="ios",
+                       version="2.0", avg_rating=1.95, rating_count=350000, rank=None))
+    subs = _store()
+    subs.add(Subscription(chat_id="C-DIGEST", app="999", store="ios",
+                          freq="daily", hour=now.hour, lang="vi", mode="digest"))
+    notifier = DryRunNotifier()
+    report = run_subscription_cycle(Deps(connectors=[FakeMeta()], storage=snap, subscriptions=subs),
+                                    notifier, now=now)
+    assert report["alerted"] == 1
+    assert notifier.sent[0][1] == "C-DIGEST" and "Không có bất thường" in notifier.sent[0][0]
 
 
 def test_subscription_cycle_delivers_then_dedups():
