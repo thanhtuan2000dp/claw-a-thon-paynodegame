@@ -38,7 +38,7 @@ class Framework(ABC):
     metric: str = "base"
 
     @abstractmethod
-    def sub_hypotheses(self, claim: dict) -> list[SubHypothesis]:
+    def sub_hypotheses(self, claim: dict, lang: str = "en") -> list[SubHypothesis]:
         """Decompose the claim into testable sub-hypotheses."""
 
 

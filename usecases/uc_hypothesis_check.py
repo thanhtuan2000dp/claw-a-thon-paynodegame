@@ -173,7 +173,12 @@ class HypothesisCheckUseCase(UseCase):
             "'prior_window' (these are NOT missing if absent). If the user said 'mới nhất'/'latest' "
             "for build, treat build as 'latest' (not missing). Infer metric from the wording. "
             "'store' is one of 'ios', 'android', or 'both' — use 'both' when the user clearly "
-            "wants both platforms; never output combined forms like 'ios|android'.\n\n"
+            "wants both platforms; never output combined forms like 'ios|android'.\n"
+            "IMPORTANT: 'cause' must be a plain human-readable description extracted from the "
+            "user's own words (e.g. 'app crash bug', 'new payment feature'). NEVER use internal "
+            "system identifiers such as 'uc6_version_impact', 'uc2_reviews_sentiment', or any "
+            "underscore-separated code name. If the cause is a version update with no specific "
+            "feature named, use 'bản cập nhật mới' (Vietnamese) or 'new update' (English).\n\n"
             f"Conversation:\n{convo}"
         )
         try:
@@ -244,10 +249,10 @@ class HypothesisCheckUseCase(UseCase):
         if framework is None:
             framework = framework_for("rating")
             notes.append(f"No framework for metric '{metric}'; used the rating framework.")
-        shs = framework.sub_hypotheses(claim)
+        shs = framework.sub_hypotheses(claim, lang=lang)
 
         signals = self._gather(claim, app_ref, meta, release_dt, store, deps, notes, country, lang)
-        sh_results = self._evaluate(shs, signals, store, deps)
+        sh_results = self._evaluate(shs, signals, store, deps, lang=lang)
         narrative = self._narrative(claim, sh_results, signals, deps, lang)
 
         return {
@@ -351,7 +356,7 @@ class HypothesisCheckUseCase(UseCase):
             "notes": [],
         }
 
-    def _evaluate(self, shs, signals, store, deps) -> list[dict]:
+    def _evaluate(self, shs, signals, store, deps, lang: str = "en") -> list[dict]:
         raw = signals["raw"]
         results = []
         for sh in shs:
@@ -360,38 +365,67 @@ class HypothesisCheckUseCase(UseCase):
                 available = signals["public"]["review_source"] is not None
             elif sh.data_need == CAP_DOWNLOADS:
                 available = raw["downloads_available"]
-            status, detail = self._status_for(sh.signal, raw, available)
+            status, detail = self._status_for(sh.signal, raw, available, lang=lang)
             results.append({
                 "id": sh.id, "statement": sh.statement, "signal": sh.signal,
                 "necessary": sh.necessary, "status": status, "detail": detail,
             })
         return results
 
-    def _status_for(self, signal, raw, available):
+    def _status_for(self, signal, raw, available, lang: str = "en"):
+        vi = lang == "vi"
         if not available:
-            return "untestable", "required data not accessible (token scope / store)"
+            return "untestable", (
+                "không thể truy cập dữ liệu cần thiết (phạm vi token / store)" if vi else
+                "required data not accessible (token scope / store)"
+            )
         if signal in (SIG_REVENUE_DELTA, SIG_DOWNLOAD_DELTA):
-            return "untestable", "downloads/revenue estimates need a Sensor Tower token with that scope"
+            return "untestable", (
+                "ước tính downloads/doanh thu cần token Sensor Tower có phạm vi phù hợp" if vi else
+                "downloads/revenue estimates need a Sensor Tower token with that scope"
+            )
         if signal == SIG_RATING_DELTA:
             d = raw["rating_delta"]
             if d is None:
-                return "inconclusive", "no before/after review rating (no baseline reviews in window)"
-            return "measured", f"review rating delta {d:+.3f}"
+                return "inconclusive", (
+                    "không có rating trước/sau (không có review baseline trong khoảng thời gian)" if vi else
+                    "no before/after review rating (no baseline reviews in window)"
+                )
+            return "measured", (
+                f"biến động rating review {d:+.3f}" if vi else f"review rating delta {d:+.3f}"
+            )
         if signal == SIG_METRIC_RATING:
             d = raw["metric_rating_delta"]
-            return ("measured", f"snapshot rating delta {d:+.3f}") if d is not None else ("inconclusive", "no prior snapshot")
+            if d is None:
+                return "inconclusive", ("chưa có snapshot trước đó" if vi else "no prior snapshot")
+            return "measured", (
+                f"biến động rating snapshot {d:+.3f}" if vi else f"snapshot rating delta {d:+.3f}"
+            )
         if signal == SIG_NEG_SHARE:
             b, a = raw["neg_before"], raw["neg_after"]
             if a is None:
-                return "inconclusive", "no post-release reviews"
-            return "measured", f"negative share {b if b is not None else '?'}% -> {a}%"
+                return "inconclusive", ("không có review sau khi phát hành" if vi else "no post-release reviews")
+            b_str = b if b is not None else "?"
+            return "measured", (
+                f"tỷ lệ review tiêu cực {b_str}% → {a}%" if vi else f"negative share {b_str}% -> {a}%"
+            )
         if signal == SIG_REVIEW_VELOCITY:
-            return "measured", f"velocity {raw['velocity_before']} -> {raw['velocity_after']}/day"
+            bv, av = raw["velocity_before"], raw["velocity_after"]
+            return "measured", (
+                f"lượng review {bv} → {av}/ngày" if vi else f"velocity {bv} -> {av}/day"
+            )
         if signal == SIG_FEATURE_MENTION:
             h = raw["feature_hits"]
-            return ("supported" if h > 0 else "inconclusive"), f"{h} post-release reviews mention '{raw['feature_term']}'"
+            term = raw["feature_term"]
+            if vi:
+                detail = f"{h} review sau khi phát hành đề cập đến '{term}'"
+            else:
+                detail = f"{h} post-release reviews mention '{term}'"
+            return ("supported" if h > 0 else "inconclusive"), detail
         if signal == SIG_TIMING:
-            return ("measured" if raw["release_dt"] else "inconclusive"), "release date known" if raw["release_dt"] else "no release date"
+            if raw["release_dt"]:
+                return "measured", ("đã biết ngày phát hành" if vi else "release date known")
+            return "inconclusive", ("không rõ ngày phát hành" if vi else "no release date")
         return "inconclusive", ""
 
     def _narrative(self, claim, sh_results, signals, deps, lang: str = "en") -> dict:
