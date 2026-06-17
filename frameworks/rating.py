@@ -21,37 +21,53 @@ from .base import (
 class RatingFramework(Framework):
     metric = "rating"
 
-    def sub_hypotheses(self, claim: dict) -> list[SubHypothesis]:
-        cause = claim.get("cause") or "the change"
+    def sub_hypotheses(self, claim: dict, lang: str = "en") -> list[SubHypothesis]:
+        cause = claim.get("cause") or ("the change" if lang == "en" else "thay đổi này")
+        vi = lang == "vi"
         return [
             SubHypothesis(
                 id="H1",
-                statement="Review rating moved in the claimed direction after the build vs before.",
+                statement=(
+                    "Rating review thay đổi theo chiều được nêu sau build so với trước." if vi else
+                    "Review rating moved in the claimed direction after the build vs before."
+                ),
                 signal=SIG_RATING_DELTA,
                 data_need="reviews",
                 necessary=True,
             ),
             SubHypothesis(
                 id="H2",
-                statement="The overall store rating trend agrees (cross-check via snapshots).",
+                statement=(
+                    "Xu hướng rating tổng thể của store nhất quán (kiểm tra qua snapshots)." if vi else
+                    "The overall store rating trend agrees (cross-check via snapshots)."
+                ),
                 signal=SIG_METRIC_RATING,
                 data_need="metadata",
             ),
             SubHypothesis(
                 id="H3",
-                statement="The mix of negative reviews shifted after the build (the proposed cause).",
+                statement=(
+                    "Tỷ lệ review tiêu cực thay đổi sau build (nguyên nhân được nêu)." if vi else
+                    "The mix of negative reviews shifted after the build (the proposed cause)."
+                ),
                 signal=SIG_NEG_SHARE,
                 data_need="reviews",
             ),
             SubHypothesis(
                 id="H4",
-                statement=f"Reviews reference '{cause}' after the release.",
+                statement=(
+                    f"Review đề cập đến '{cause}' sau khi phát hành." if vi else
+                    f"Reviews reference '{cause}' after the release."
+                ),
                 signal=SIG_FEATURE_MENTION,
                 data_need="reviews",
             ),
             SubHypothesis(
                 id="H5",
-                statement="The shift aligns in time with this build (not a pre-existing trend).",
+                statement=(
+                    "Sự thay đổi xảy ra đúng thời điểm build này (không phải xu hướng từ trước)." if vi else
+                    "The shift aligns in time with this build (not a pre-existing trend)."
+                ),
                 signal=SIG_TIMING,
                 data_need="metadata",
             ),

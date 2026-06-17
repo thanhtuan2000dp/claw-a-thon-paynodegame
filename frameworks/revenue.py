@@ -22,37 +22,53 @@ from .base import (
 class RevenueFramework(Framework):
     metric = "revenue"
 
-    def sub_hypotheses(self, claim: dict) -> list[SubHypothesis]:
-        cause = claim.get("cause") or "the feature"
+    def sub_hypotheses(self, claim: dict, lang: str = "en") -> list[SubHypothesis]:
+        vi = lang == "vi"
+        cause = claim.get("cause") or ("the feature" if not vi else "tính năng này")
         return [
             SubHypothesis(
                 id="H1",
-                statement="Revenue actually moved in the claimed direction in the window after the build vs the baseline.",
+                statement=(
+                    "Doanh thu thực sự thay đổi theo chiều được nêu sau build so với baseline." if vi else
+                    "Revenue actually moved in the claimed direction in the window after the build vs the baseline."
+                ),
                 signal=SIG_REVENUE_DELTA,
                 data_need="downloads",
                 necessary=True,
             ),
             SubHypothesis(
                 id="H2",
-                statement="The revenue move aligns in time with this build's release (not a pre-existing trend).",
+                statement=(
+                    "Sự thay đổi doanh thu xảy ra đúng thời điểm phát hành build này (không phải xu hướng từ trước)." if vi else
+                    "The revenue move aligns in time with this build's release (not a pre-existing trend)."
+                ),
                 signal=SIG_TIMING,
                 data_need="metadata",
             ),
             SubHypothesis(
                 id="H3",
-                statement="The move is monetization-driven, not merely acquisition (downloads) rising in the same window.",
+                statement=(
+                    "Sự thay đổi do monetization, không phải chỉ do lượt cài đặt tăng trong cùng khoảng thời gian." if vi else
+                    "The move is monetization-driven, not merely acquisition (downloads) rising in the same window."
+                ),
                 signal=SIG_DOWNLOAD_DELTA,
                 data_need="downloads",
             ),
             SubHypothesis(
                 id="H4",
-                statement=f"Users reference '{cause}' positively after the release (adoption signal).",
+                statement=(
+                    f"Người dùng đề cập đến '{cause}' tích cực sau khi phát hành (tín hiệu adoption)." if vi else
+                    f"Users reference '{cause}' positively after the release (adoption signal)."
+                ),
                 signal=SIG_FEATURE_MENTION,
                 data_need="reviews",
             ),
             SubHypothesis(
                 id="H5",
-                statement="No dominant quality regression (rising negative reviews) better explains the change.",
+                statement=(
+                    "Không có suy giảm chất lượng rõ rệt (review tiêu cực tăng) giải thích tốt hơn cho sự thay đổi." if vi else
+                    "No dominant quality regression (rising negative reviews) better explains the change."
+                ),
                 signal=SIG_NEG_SHARE,
                 data_need="reviews",
             ),
