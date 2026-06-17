@@ -1,6 +1,6 @@
 # Veridex — App Intelligence Agent
 
-> Claw-a-thon 2026 · Hạng mục: **Automation & Integration** · Nền tảng: **GreenNode AgentBase**
+> Claw-a-thon 2026 · Hạng mục: **Data Analysis** · Nền tảng: **GreenNode AgentBase**
 
 **Veridex** ("veritas" + "index" — *chỉ mục sự thật từ tín hiệu app-store*) là một AI agent biến các
 **tín hiệu công khai trên App Store / Google Play** — cho cả ứng dụng **và** game (metadata, điểm số,
