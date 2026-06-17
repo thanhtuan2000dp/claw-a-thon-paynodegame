@@ -103,12 +103,16 @@ class HypothesisCheckUseCase(UseCase):
             or "default"
         )
         msg = (params.get("statement") or params.get("message") or "").strip()
-        lang = (params.get("lang") or detect_lang(msg)).lower()
         store = deps.conversation
 
         if msg:
             store.append(session_id, "user", msg)
         history = store.history(session_id)
+
+        # Detect language from full conversation history so a single all-ASCII
+        # turn ("android", "ios") doesn't flip the language mid-session.
+        user_texts = [t["content"] for t in history if t.get("role") == "user"] or [msg]
+        lang = (params.get("lang") or detect_lang(*user_texts)).lower()
 
         if not history:
             q = ('Bạn muốn kiểm chứng giả thuyết gì? '
