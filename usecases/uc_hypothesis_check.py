@@ -109,10 +109,12 @@ class HypothesisCheckUseCase(UseCase):
             store.append(session_id, "user", msg)
         history = store.history(session_id)
 
-        # Detect language from full conversation history so a single all-ASCII
-        # turn ("android", "ios") doesn't flip the language mid-session.
+        # Detect language from full conversation history, not just the current
+        # message. The router sets params["lang"] from one message at a time, so
+        # an all-ASCII turn ("android", "ios", "do app loi") would flip the
+        # language mid-session. Scanning all user turns is more reliable.
         user_texts = [t["content"] for t in history if t.get("role") == "user"] or [msg]
-        lang = (params.get("lang") or detect_lang(*user_texts)).lower()
+        lang = detect_lang(*user_texts).lower()
 
         if not history:
             q = ('Bạn muốn kiểm chứng giả thuyết gì? '
